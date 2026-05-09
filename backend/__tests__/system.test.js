@@ -16,12 +16,13 @@ test('parseMemInfo returns used RAM in bytes from /proc/meminfo', () => {
     'MemFree:         4096000 kB',
     'Buffers:          512000 kB',
     'Cached:          4096000 kB',
+    'MemAvailable:    8192000 kB',
     'SwapTotal:       2097152 kB',
   ].join('\n');
   const result = parseMemInfo(content);
   expect(result.total).toBe(16384000 * 1024);
-  // used = MemTotal - MemFree - Buffers - Cached
-  expect(result.used).toBe((16384000 - 4096000 - 512000 - 4096000) * 1024);
+  // used = MemTotal - MemAvailable (correct modern kernel formula)
+  expect(result.used).toBe((16384000 - 8192000) * 1024);
 });
 
 test('parseNetDev parses rx and tx bytes per interface', () => {

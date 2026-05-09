@@ -11,8 +11,7 @@ function attachTerminal(httpServer, config) {
       return;
     }
     if (url.searchParams.get('token') !== config.apiKey) {
-      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-      socket.destroy();
+      wss.handleUpgrade(req, socket, head, (ws) => ws.close(4401, 'Unauthorized'));
       return;
     }
     wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws));
