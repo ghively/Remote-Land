@@ -1,13 +1,6 @@
 /* NASTerminal.jsx — Main app: Login, Status Bar, WM Orchestrator, Mobile Deck */
 const { useState, useEffect, useRef, useCallback } = React;
 
-// ── Credentials (demo — wire to real backend) ────────────────────────────────
-const VALID_CREDS = [
-  { user: 'root',  pass: 'root',  host: 'nas.local' },
-  { user: 'gene',  pass: 'gene',  host: 'nas.local' },
-  { user: 'admin', pass: 'admin', host: 'nas.local' },
-];
-
 // ── Boot sequence lines ───────────────────────────────────────────────────────
 const BOOT_LINES = [
   { text: '> BIOS POST... OK',                         type: 'ok',   delay: 0 },
@@ -21,12 +14,13 @@ const BOOT_LINES = [
 
 // ── Login Screen ─────────────────────────────────────────────────────────────
 function LoginScreen({ onLogin }) {
-  const [user, setUser] = useState('');
-  const [pass, setPass] = useState('');
-  const [host, setHost] = useState('nas.local');
-  const [error, setError] = useState('');
+  const [user, setUser]     = useState('');
+  const [pass, setPass]     = useState('');
+  const [host, setHost]     = useState('nas.local');
+  const [apiKey, setApiKey] = useState('');
+  const [error, setError]   = useState('');
   const [bootIdx, setBootIdx] = useState(0);
-  const [booted, setBooted] = useState(false);
+  const [booted, setBooted]   = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -39,21 +33,29 @@ function LoginScreen({ onLogin }) {
     return () => timers.forEach(clearTimeout);
   }, []);
 
-  const doLogin = (e) => {
+  const doLogin = async (e) => {
     e && e.preventDefault();
     setError('');
     setLoading(true);
-    setTimeout(() => {
-      const cred = VALID_CREDS.find(c =>
-        (c.user === user || user === '') && (c.pass === pass || pass === '')
-      ) || (user === '' ? VALID_CREDS[0] : null);
-      if (cred || user) {
-        onLogin({ user: user || 'root', host });
-      } else {
-        setError('> AUTH FAILED: INVALID CREDENTIALS');
-        setLoading(false);
-      }
-    }, 800);
+
+    // Blank API key = demo mode (mock data, no backend probe).
+    if (!apiKey) {
+      onLogin({ user: user || 'root', host, apiKey: '__demo__' });
+      return;
+    }
+
+    try {
+      const api = window.makeApi(host, apiKey);
+      await api.health();        // backend reachable?
+      await api.systemStats();   // 401 if API key wrong
+      onLogin({ user: user || 'root', host, apiKey });
+    } catch (err) {
+      const msg = /HTTP 401/.test(err.message)
+        ? '> AUTH FAILED: INVALID API KEY'
+        : `> AUTH FAILED: ${err.message.toUpperCase()}`;
+      setError(msg);
+      setLoading(false);
+    }
   };
 
   const colorMap = { ok: 'var(--neon-green)', info: 'var(--neon-cyan)', warn: '#ffbd2e' };
@@ -92,13 +94,18 @@ function LoginScreen({ onLogin }) {
               <input className="login-field" type="password" placeholder="••••••••"
                 value={pass} onChange={e => setPass(e.target.value)} />
             </div>
+            <div>
+              <div className="login-field-label">API_KEY</div>
+              <input className="login-field" type="password" placeholder="leave blank for demo mode"
+                value={apiKey} onChange={e => setApiKey(e.target.value)} autoComplete="off" />
+            </div>
             <div className="login-error">{error}</div>
             <button type="submit" className="cmd-btn" style={{ width: '100%', textAlign: 'center', fontSize: '0.95rem', letterSpacing: 2 }}
               disabled={loading}>
               {loading ? '> AUTHENTICATING...' : '[ INITIATE_SESSION ]'}
             </button>
             <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)', textAlign: 'center', marginTop: -4 }}>
-              demo: root / root — or leave blank and press enter
+              Leave API_KEY blank for demo mode (mock data, no backend).
             </div>
           </form>
         )}
@@ -683,24 +690,28 @@ function NASTerminalApp() {
 
   if (!auth) return <LoginScreen onLogin={handleLogin} />;
 
-  if (isMobile) {
-    return (
-      <MobileDeck
-        user={auth.user}
-        host={auth.host}
-        sessions={mobileSessions}
-        onAddSession={(winId, h) => {
-          const sessId = `mob-${Date.now()}`;
-          setMobileSessions(s => [...s, { ...createSession(sessId, h || auth.host), winId }]);
-        }}
-        onUpdateSession={(sessId, updater) => setMobileSessions(ss => ss.map(s => s.id === sessId ? updater(s) : s))}
-        onLaunchApp={() => {}}
-        onLogout={handleLogout}
-      />
-    );
-  }
+  const inner = isMobile ? (
+    <MobileDeck
+      user={auth.user}
+      host={auth.host}
+      sessions={mobileSessions}
+      onAddSession={(winId, h) => {
+        const sessId = `mob-${Date.now()}`;
+        setMobileSessions(s => [...s, { ...createSession(sessId, h || auth.host), winId }]);
+      }}
+      onUpdateSession={(sessId, updater) => setMobileSessions(ss => ss.map(s => s.id === sessId ? updater(s) : s))}
+      onLaunchApp={() => {}}
+      onLogout={handleLogout}
+    />
+  ) : (
+    <WMDesktop user={auth.user} host={auth.host} onLogout={handleLogout} />
+  );
 
-  return <WMDesktop user={auth.user} host={auth.host} onLogout={handleLogout} />;
+  return (
+    <BackendProvider host={auth.host} apiKey={auth.apiKey || '__demo__'}>
+      {inner}
+    </BackendProvider>
+  );
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(<NASTerminalApp />);
