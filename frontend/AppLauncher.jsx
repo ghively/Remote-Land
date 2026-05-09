@@ -22,6 +22,7 @@ const PANEL_APPS = [
   { id: 'netmap',    name: 'Network',    desc: 'Network Map',        icon: '[NM]', cat: 'SYSTEM' },
   { id: 'cron',      name: 'Cron',       desc: 'Job Scheduler',      icon: '[CR]', cat: 'SYSTEM' },
   { id: 'apicfg',    name: 'Backend Config', desc: 'Host & API key',     icon: '[CF]', cat: 'SYSTEM' },
+  { id: 'aichat',    name: 'AI Chat',    desc: 'LLM assistant',      icon: '[AI]', cat: 'SYSTEM' },
   { id: 'settings',  name: 'Settings',   desc: 'Theme & appearance', icon: '[ST]', cat: 'SYSTEM' },
   { id: 'browser',   name: 'Browser',    desc: 'Web Browser',        icon: '[WW]', cat: 'SYSTEM' },
   { id: 'devdocs',   name: 'Dev Guide',  desc: 'Developer docs',     icon: '[?]',  cat: 'SYSTEM' },
