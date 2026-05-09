@@ -24,23 +24,33 @@ Fedora/RHEL:
 sudo dnf install -y gcc-c++ make python3
 ```
 
-## Install
+## Install (single-host deploy)
+
+The backend serves the React UI from the same port as the API, so a
+single `systemctl start` is enough — no separate web server required.
+The repo's `backend/` and `frontend/` directories must sit side-by-side
+on the target machine; `server.js` resolves the UI directory as
+`../frontend` relative to itself.
 
 ```bash
-# 1. Copy backend to server
-sudo cp -r backend/ /opt/nas-terminal/backend
+# 1. Copy BOTH trees to the server (preserve the side-by-side layout)
+sudo mkdir -p /opt/nas-terminal
+sudo cp -r backend/  /opt/nas-terminal/backend
+sudo cp -r frontend/ /opt/nas-terminal/frontend
 cd /opt/nas-terminal/backend
 
 # 2. Install Node dependencies
-npm install --production
+sudo npm install --omit=dev
 
 # 3. Create config from template
-cp config.example.json config.json
-nano config.json   # set apiKey, port, media service URLs + API keys
+sudo cp config.example.json config.json
+sudo nano config.json   # set apiKey, port, media URLs + keys, ai.{baseUrl,apiKey}
 
-# 4. Create a dedicated service user
-sudo useradd -r -s /bin/bash nas-terminal
-sudo usermod -aG docker nas-terminal   # grants Docker socket access
+# 4. Create a dedicated service user (shell needed for `systemctl status` to
+#    show the right user; node-pty itself doesn't need a login shell)
+sudo useradd -r -s /bin/bash nas-terminal || true
+sudo usermod -aG docker nas-terminal     # grants Docker socket access
+sudo chown -R nas-terminal:nas-terminal /opt/nas-terminal
 
 # 5. Install systemd service
 sudo cp nas-terminal.service /etc/systemd/system/
@@ -49,8 +59,54 @@ sudo systemctl enable --now nas-terminal
 
 # 6. Verify
 sudo systemctl status nas-terminal
-curl http://localhost:3001/api/health
+curl http://localhost:3001/api/health     # → {"status":"ok","ai":"..."}
+curl -I http://localhost:3001/            # → 200 text/html (the UI)
 ```
+
+Open `http://<host>:3001/` in a browser. Log in with the API key from
+`config.json` (or leave blank for demo mode).
+
+### Reverse-proxy / split-host deploy
+
+If you want to put the UI behind nginx/Caddy with TLS termination, copy
+only `frontend/` to the static root and proxy `/api/*` + `/terminal`
+(WebSocket upgrade) to the backend on `:3001`. **Make sure the static
+host serves `.jsx` files with `Content-Type: text/javascript` (or
+`application/javascript`)** — the default `text/html` or `text/plain`
+that some configs hand back will cause Babel-standalone to fail
+silently and you'll see a blank or "static-looking" page.
+
+nginx snippet:
+
+```nginx
+types { text/javascript jsx; }   # tell nginx that .jsx is JS
+location / {
+    root /var/www/nas-terminal;
+    index "NAS Terminal.html";
+}
+location /api/     { proxy_pass http://127.0.0.1:3001; }
+location /terminal {
+    proxy_pass http://127.0.0.1:3001;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade    $http_upgrade;
+    proxy_set_header Connection "upgrade";
+}
+```
+
+If the UI loads but doesn't render past the boot screen, the most
+common causes are: (1) wrong MIME type on `.jsx`, (2) reverse proxy
+buffering the SSE stream from `/api/ai/*` (add `proxy_buffering off;`
+inside the `/api/` block), or (3) a Content-Security-Policy header
+blocking `unpkg.com`/`cdn.jsdelivr.net` — both CDNs are required for
+React, Babel-standalone, and xterm.js.
+
+### Custom layout
+
+If `backend/` and `frontend/` aren't side-by-side on the target host,
+set `frontendDir` in `config.json` to the absolute path of the
+frontend directory. Setting it to a non-existent path (or omitting it
+when `../frontend` doesn't resolve) makes the backend log a warning at
+startup and serve the API only.
 
 ## Logs
 

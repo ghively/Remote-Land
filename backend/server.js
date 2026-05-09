@@ -1,5 +1,7 @@
 const express = require('express');
 const http = require('http');
+const path = require('path');
+const fs   = require('fs');
 const cors = require('cors');
 const system = require('./system');
 const docker = require('./docker');
@@ -131,6 +133,31 @@ function createApp(config) {
     res.write('data: [DONE]\n\n');
     res.end();
   });
+
+  // ── Static frontend ─────────────────────────────────────────────────────────
+  // Serve the React+Babel single-page UI from the same port as the API. The
+  // frontend dir is resolved relative to this file by default; override with
+  // config.frontendDir for non-standard layouts.
+  const frontendDir = (config.frontendDir && path.resolve(config.frontendDir))
+    || path.resolve(__dirname, '..', 'frontend');
+  const indexHtml = path.join(frontendDir, 'NAS Terminal.html');
+
+  if (fs.existsSync(indexHtml)) {
+    // Serve every asset (.jsx, .css, images) directly. .jsx must come back as
+    // text/javascript so Babel-standalone can re-parse it; some hosts default
+    // .jsx to text/plain or text/html, which silently breaks the UI.
+    app.use(express.static(frontendDir, {
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.jsx')) res.setHeader('content-type', 'text/javascript; charset=utf-8');
+      },
+    }));
+    // Root → the (space-containing) HTML entry. URL-encoded paths still work
+    // through the static middleware above; this handler is just for the bare
+    // / request.
+    app.get('/', (req, res) => res.sendFile(indexHtml));
+  } else {
+    console.warn(`[server] frontend not found at ${frontendDir}; serving API only`);
+  }
 
   return app;
 }

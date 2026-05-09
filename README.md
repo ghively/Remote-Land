@@ -4,13 +4,19 @@ Cyber-noir Linux server management UI. A tiling window manager interface for man
 
 ## Running the UI
 
-No install. No build. Just open the file:
+Two modes, pick whichever fits.
 
-```
-frontend/NAS Terminal.html
-```
+**Local / demo (no install).** Open `frontend/NAS Terminal.html` directly in
+Chrome, Firefox, or Edge — double-click or drag it into a tab. Leave the
+`API_KEY` field blank to enter **demo mode** (mock data, no backend
+required).
 
-Double-click it or drag it into Chrome, Firefox, or Edge. The boot sequence plays, then you hit the login screen. Leave the API_KEY field blank for **demo mode** (mock data, no backend); fill it in to connect to a running backend agent.
+**Single-host deploy.** Install the backend (see `backend/README.md` →
+*Install (single-host deploy)*) and the same Express server hosts both the
+API and the UI on port 3001. Browse to `http://<host>:3001/` and log in with
+the API key from `backend/config.json`. **You do not need a separate web
+server** — if a previous deployment looked like a "static HTML site", that's
+because the backend wasn't serving the frontend; this is now built in.
 
 ## Project structure
 
