@@ -1,0 +1,15 @@
+[Unit]
+Description=NAS Terminal Backend Agent
+After=network.target docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/nas-terminal/backend
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=5
+User=nas-terminal
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target
