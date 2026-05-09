@@ -1,5 +1,5 @@
 /* SystemPanels.jsx — File Manager, System Monitor, Log Viewer, Docker, Services, Network, Cron */
-const { useState, useEffect, useRef } = React;
+const { useState, useEffect, useRef, useCallback } = React;
 
 // ── Shared mini-button ─────────────────────────────────────────────────────
 function Btn({ label, cls = '', onClick }) {
@@ -410,29 +410,103 @@ const INITIAL_CONTAINERS = [
 ];
 
 function DockerManager({ onNotify }) {
-  const [containers, setContainers] = useState(INITIAL_CONTAINERS);
+  const { api, isDemo, status } = useBackend();
+  const [containers, setContainers] = useState(isDemo ? INITIAL_CONTAINERS : []);
   const [expanded, setExpanded] = useState(null);
+  const [logsByContainer, setLogsByContainer] = useState({});
+  const [unavailable, setUnavailable] = useState(false);
 
-  const toggle = (id, action) => {
-    setContainers(cs => cs.map(c => c.id === id
-      ? { ...c, status: action === 'start' ? 'running' : action === 'stop' ? 'stopped' : action === 'pause' ? 'paused' : c.status }
-      : c));
-    onNotify && onNotify(`> CONTAINER ${id.slice(0,8).toUpperCase()} ${action.toUpperCase()}ED`, action === 'stop' ? 'warn' : 'ok');
+  const refresh = useCallback(async () => {
+    if (isDemo || !api) return;
+    try {
+      const list = await api.containers();
+      // Backend shape: {id,name,image,status,state}. Map state→running/stopped/paused.
+      setContainers(list.map(c => ({
+        id:       c.id,
+        name:     c.name,
+        image:    c.image,
+        status:   c.state === 'running' ? 'running' : c.state === 'paused' ? 'paused' : 'stopped',
+        state:    c.state,
+        ports:    '',
+        cpu:      '',
+        mem:      '',
+        restarts: 0,
+        created:  c.status || '',
+      })));
+      setUnavailable(false);
+    } catch (_) {
+      setUnavailable(true);
+    }
+  }, [api, isDemo]);
+
+  useEffect(() => {
+    if (isDemo) return;
+    if (status !== 'online') return;
+    refresh();
+    const iv = setInterval(refresh, 5000);
+    return () => clearInterval(iv);
+  }, [refresh, isDemo, status]);
+
+  const toggle = async (id, action) => {
+    if (isDemo) {
+      setContainers(cs => cs.map(c => c.id === id
+        ? { ...c, status: action === 'start' ? 'running' : action === 'stop' ? 'stopped' : action === 'pause' ? 'paused' : c.status }
+        : c));
+      onNotify && onNotify(`> CONTAINER ${id.slice(0,8).toUpperCase()} ${action.toUpperCase()}ED`, action === 'stop' ? 'warn' : 'ok');
+      return;
+    }
+    try {
+      if (action === 'start') await api.startContainer(id);
+      else if (action === 'stop') await api.stopContainer(id);
+      else return; // pause not supported by backend
+      onNotify && onNotify(`> CONTAINER ${id.slice(0,8).toUpperCase()} ${action.toUpperCase()}ED`, action === 'stop' ? 'warn' : 'ok');
+      refresh();
+    } catch (err) {
+      onNotify && onNotify(`> ${action.toUpperCase()} FAILED: ${err.message}`, 'crit');
+    }
   };
 
-  const restart = (id) => {
-    setContainers(cs => cs.map(c => c.id === id ? { ...c, status: 'running', restarts: c.restarts + 1 } : c));
-    onNotify && onNotify(`> CONTAINER RESTARTING...`, 'warn');
+  const restart = async (id) => {
+    if (isDemo) {
+      setContainers(cs => cs.map(c => c.id === id ? { ...c, status: 'running', restarts: c.restarts + 1 } : c));
+      onNotify && onNotify(`> CONTAINER RESTARTING...`, 'warn');
+      return;
+    }
+    try {
+      await api.stopContainer(id);
+      await api.startContainer(id);
+      onNotify && onNotify('> CONTAINER RESTARTED', 'ok');
+      refresh();
+    } catch (err) {
+      onNotify && onNotify(`> RESTART FAILED: ${err.message}`, 'crit');
+    }
+  };
+
+  const showLogs = async (id) => {
+    if (expanded === id) { setExpanded(null); return; }
+    setExpanded(id);
+    if (isDemo) return;
+    try {
+      const text = await api.containerLogs(id);
+      setLogsByContainer(m => ({ ...m, [id]: text }));
+    } catch (err) {
+      setLogsByContainer(m => ({ ...m, [id]: `> LOGS FAILED: ${err.message}` }));
+    }
   };
 
   return (
     <div className="docker-pane">
+      {unavailable && !isDemo && (
+        <div style={{ padding: '8px 10px', marginBottom: 10, color: '#ff5f56', textShadow: '0 0 4px #ff5f56', letterSpacing: 2, border: '1px solid rgba(255,95,86,0.4)', borderRadius: 4 }}>
+          [ DOCKER UNAVAILABLE — CHECK SOCKET / PERMISSIONS ]
+        </div>
+      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
         <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', letterSpacing: 1 }}>
           CONTAINERS: {containers.filter(c => c.status === 'running').length} RUNNING / {containers.length} TOTAL
         </span>
         <div style={{ display: 'flex', gap: 6 }}>
-          <Btn label="[REFRESH]" cls="cyan" onClick={() => onNotify && onNotify('> DOCKER DAEMON POLLED', 'ok')} />
+          <Btn label="[REFRESH]" cls="cyan" onClick={() => isDemo ? onNotify && onNotify('> DOCKER DAEMON POLLED', 'ok') : refresh()} />
           <Btn label="[PULL IMAGE]" onClick={() => {}} />
         </div>
       </div>
@@ -457,18 +531,24 @@ function DockerManager({ onNotify }) {
             {c.status === 'running'  && <Btn label="[STOP]"  cls="danger" onClick={() => toggle(c.id, 'stop')} />}
             {c.status === 'running'  && <Btn label="[RESTART]" cls="warn" onClick={() => restart(c.id)} />}
             {c.status === 'running'  && <Btn label="[PAUSE]" onClick={() => toggle(c.id, 'pause')} />}
-            <Btn label="[LOGS]" cls="cyan" onClick={() => setExpanded(expanded === c.id ? null : c.id)} />
+            <Btn label="[LOGS]" cls="cyan" onClick={() => showLogs(c.id)} />
             <Btn label="[EXEC]" onClick={() => {}} />
             <Btn label="[REMOVE]" cls="danger" onClick={() => {}} />
           </div>
           {expanded === c.id && (
-            <div style={{ marginTop: 8, background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(0,255,0,0.1)', borderRadius: 4, padding: '8px 10px', fontSize: '0.72rem', lineHeight: 1.7, color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>
-              <div style={{ color: 'var(--neon-cyan)', marginBottom: 4 }}>&gt; LOGS: {c.name} (last 10 lines)</div>
-              <div>&gt; {c.name} | {c.image.split(':')[1] || 'latest'} | started</div>
-              <div>&gt; [info] container initializing...</div>
-              <div>&gt; [info] configuration loaded</div>
-              <div>&gt; [info] service listening on :{c.ports.split(':')[0]}</div>
-              <div>&gt; [info] ready for connections</div>
+            <div style={{ marginTop: 8, background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(0,255,0,0.1)', borderRadius: 4, padding: '8px 10px', fontSize: '0.72rem', lineHeight: 1.7, color: 'var(--text-dim)', fontFamily: 'var(--font-mono)', maxHeight: 240, overflowY: 'auto', whiteSpace: 'pre-wrap' }}>
+              <div style={{ color: 'var(--neon-cyan)', marginBottom: 4 }}>&gt; LOGS: {c.name} (last 100 lines)</div>
+              {isDemo ? (
+                <>
+                  <div>&gt; {c.name} | {(c.image || '').split(':')[1] || 'latest'} | started</div>
+                  <div>&gt; [info] container initializing...</div>
+                  <div>&gt; [info] configuration loaded</div>
+                  <div>&gt; [info] service listening on :{(c.ports || '').split(':')[0]}</div>
+                  <div>&gt; [info] ready for connections</div>
+                </>
+              ) : (
+                <div>{logsByContainer[c.id] === undefined ? '> loading...' : logsByContainer[c.id]}</div>
+              )}
             </div>
           )}
         </div>
