@@ -101,6 +101,6 @@ All colors, fonts, spacing, and motion values come from `frontend/colors_and_typ
 | # | Sub-project | Status |
 |---|-------------|--------|
 | 1 | Project Foundation | ✅ Complete |
-| 2 | Backend Server Agent | Planned |
-| 3 | Frontend / Backend Wiring | Planned |
+| 2 | Backend Server Agent | ✅ Complete |
+| 3 | Frontend / Backend Wiring | ✅ Complete |
 | 4 | AI Features | Planned |
