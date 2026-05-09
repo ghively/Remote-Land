@@ -599,8 +599,75 @@ function TermSession({ session, onUpdate }) {
   document.head.appendChild(s);
 })();
 
+// ── Real PTY session over WebSocket (xterm.js + backend) ─────────────────────
+function WSTerminalSession({ wsUrl }) {
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    if (!window.Terminal || !window.FitAddon) {
+      // CDN didn't load — fail loud rather than silently render nothing.
+      if (containerRef.current) {
+        containerRef.current.textContent = '> xterm.js failed to load (check network).';
+        containerRef.current.style.color = '#ff5f56';
+        containerRef.current.style.padding = '12px';
+      }
+      return;
+    }
+
+    const term = new window.Terminal({
+      fontFamily: "'Courier New', monospace",
+      fontSize: 13,
+      cursorBlink: true,
+      theme: { background: '#050505', foreground: '#ccffcc', cursor: '#00ff00' },
+    });
+    const fit = new window.FitAddon.FitAddon();
+    term.loadAddon(fit);
+    term.open(containerRef.current);
+    try { fit.fit(); } catch (_) {}
+
+    const ws = new WebSocket(wsUrl);
+    ws.binaryType = 'arraybuffer';
+
+    ws.onmessage = (ev) => {
+      if (ev.data instanceof ArrayBuffer) term.write(new Uint8Array(ev.data));
+      else term.write(ev.data);
+    };
+    ws.onclose = (ev) => {
+      const msg = ev.code === 4401 ? 'unauthorized' : (ev.reason || 'closed');
+      term.write(`\r\n\x1b[31m[disconnected: ${ev.code} ${msg}]\x1b[0m\r\n`);
+    };
+    ws.onerror = () => term.write(`\r\n\x1b[31m[connection error]\x1b[0m\r\n`);
+    ws.onopen = () => {
+      try { fit.fit(); } catch (_) {}
+      const { cols, rows } = term;
+      ws.send(JSON.stringify({ type: 'resize', cols, rows }));
+    };
+
+    term.onData(d => {
+      if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'input', data: d }));
+    });
+
+    const onResize = () => {
+      try { fit.fit(); } catch (_) { return; }
+      const { cols, rows } = term;
+      if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'resize', cols, rows }));
+    };
+    const ro = new ResizeObserver(onResize);
+    if (containerRef.current) ro.observe(containerRef.current);
+
+    return () => { ro.disconnect(); ws.close(); term.dispose(); };
+  }, [wsUrl]);
+
+  return <div ref={containerRef} style={{ flex: 1, height: '100%', minHeight: 0, background: '#050505' }} />;
+}
+
 // ── Terminal Pane (multi-tab) ─────────────────────────────────────────────────
 function TerminalPane({ winId, sessions, activeSess, onTabChange, onAddTab, onCloseTab, onUpdateSession }) {
+  const { api, isDemo } = (window.useBackend ? window.useBackend() : { api: null, isDemo: true });
+  if (!isDemo && api) {
+    return <WSTerminalSession wsUrl={api.terminalUrl()} />;
+  }
+
   const winSessions = sessions.filter(s => s.winId === winId);
   const activeSession = winSessions.find(s => s.id === activeSess) || winSessions[0];
 
