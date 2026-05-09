@@ -39,15 +39,21 @@ function loadWebapps() { try { return JSON.parse(localStorage.getItem(STORAGE_KE
 function saveWebapps(apps) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(apps)); } catch {} }
 
 // Rofi mode tabs
-const MODES = ['apps', 'windows', 'webapps'];
+const MODES = ['apps', 'windows', 'webapps', 'ai'];
 
 function AppLauncher({ isOpen, onClose, onLaunch, windows = [] }) {
+  const ctx = (typeof useBackend === 'function') ? useBackend() : { ai: null, aiEnabled: false, isDemo: true };
+  const { ai, aiEnabled, isDemo } = ctx;
+
   const [search, setSearch] = useState('');
   const [mode, setMode] = useState('apps');
   const [focused, setFocused] = useState(0);
   const [webapps, setWebapps] = useState(loadWebapps);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newApp, setNewApp] = useState({ name: '', desc: '', url: '', icon: '[>]', cat: 'MEDIA' });
+  const [aiResult, setAiResult]     = useState(null);   // {command, explanation, danger}
+  const [aiLoading, setAiLoading]   = useState(false);
+  const [aiError, setAiError]       = useState(null);
   const searchRef = useRef(null);
   const ringRef = useRef(null);
 
@@ -57,8 +63,34 @@ function AppLauncher({ isOpen, onClose, onLaunch, windows = [] }) {
     if (isOpen) {
       setTimeout(() => searchRef.current && searchRef.current.focus(), 50);
       setSearch(''); setFocused(0);
+      setAiResult(null); setAiError(null); setAiLoading(false);
     }
   }, [isOpen]);
+
+  // Auto-switch to AI mode when the input starts with `?`.
+  useEffect(() => {
+    if (search.startsWith('?')) {
+      if (mode !== 'ai') setMode('ai');
+    }
+  }, [search, mode]);
+
+  const askAI = async (intent) => {
+    if (!ai || !intent) return;
+    setAiLoading(true); setAiResult(null); setAiError(null);
+    try {
+      const out = await ai.shell(intent);
+      setAiResult(out);
+    } catch (err) {
+      setAiError(err.message);
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const insertIntoTerminal = (command) => {
+    window.dispatchEvent(new CustomEvent('nas:insert-into-terminal', { detail: command }));
+    onClose();
+  };
 
   // Update ring background from global gradient angle
   useEffect(() => {
@@ -82,19 +114,28 @@ function AppLauncher({ isOpen, onClose, onLaunch, windows = [] }) {
     return () => window.removeEventListener('keydown', h);
   }, [isOpen, onClose]);
 
-  // Build flat list for keyboard nav
+  // Build flat list for keyboard nav. AI mode has its own result state.
   const allItems = mode === 'apps'
     ? [...PANEL_APPS, ...MEDIA_APPS].filter(a => !search || a.name.toLowerCase().includes(search.toLowerCase()) || a.desc.toLowerCase().includes(search.toLowerCase()))
     : mode === 'webapps'
     ? webapps.filter(a => !search || a.name.toLowerCase().includes(search.toLowerCase()))
-    : (windows || []).filter(w => !w.minimized).filter(w => !search || w.title.toLowerCase().includes(search.toLowerCase()));
+    : mode === 'windows'
+    ? (windows || []).filter(w => !w.minimized).filter(w => !search || w.title.toLowerCase().includes(search.toLowerCase()))
+    : [];
 
   // Keyboard navigation
   const onKeyDown = (e) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setFocused(f => Math.min(f + 1, allItems.length - 1)); }
     if (e.key === 'ArrowUp')   { e.preventDefault(); setFocused(f => Math.max(f - 1, 0)); }
     if (e.key === 'Tab')       { e.preventDefault(); setMode(m => { const i = MODES.indexOf(m); return MODES[(i+1) % MODES.length]; }); setFocused(0); }
-    if (e.key === 'Enter' && allItems[focused]) { launch(allItems[focused]); }
+    if (e.key === 'Enter') {
+      if (mode === 'ai') {
+        e.preventDefault();
+        askAI(search.replace(/^\?\s*/, '').trim());
+      } else if (allItems[focused]) {
+        launch(allItems[focused]);
+      }
+    }
   };
 
   const launch = (app) => {
@@ -130,7 +171,12 @@ function AppLauncher({ isOpen, onClose, onLaunch, windows = [] }) {
               <input
                 ref={searchRef}
                 className="rofi-search"
-                placeholder={mode === 'windows' ? 'switch to window...' : mode === 'webapps' ? 'open web app...' : 'run command...'}
+                placeholder={
+                  mode === 'windows' ? 'switch to window...' :
+                  mode === 'webapps' ? 'open web app...' :
+                  mode === 'ai'      ? '? describe what you want done...' :
+                  'run command...'
+                }
                 value={search}
                 onChange={e => { setSearch(e.target.value); setFocused(0); }}
                 onKeyDown={onKeyDown}
@@ -144,6 +190,7 @@ function AppLauncher({ isOpen, onClose, onLaunch, windows = [] }) {
               { id: 'apps',    label: 'drun',   hint: 'system panels' },
               { id: 'windows', label: 'window', hint: 'open windows' },
               { id: 'webapps', label: 'run',    hint: 'web apps' },
+              { id: 'ai',      label: 'ai',     hint: 'NL→shell' },
             ].map(m => (
               <button key={m.id} onClick={() => { setMode(m.id); setFocused(0); setSearch(''); }}
                 style={{
@@ -241,6 +288,65 @@ function AppLauncher({ isOpen, onClose, onLaunch, windows = [] }) {
                   )}
                 </div>
               </>
+            )}
+
+            {/* AI mode */}
+            {mode === 'ai' && (
+              <div style={{ padding: 16, color: 'var(--text-primary)',
+                            fontFamily: 'var(--font-mono)', fontSize: '0.85rem' }}>
+                {(isDemo || !aiEnabled) && (
+                  <div style={{ color: 'var(--text-dim)', lineHeight: 1.7 }}>
+                    &gt; AI requires backend (set <code style={{ color: 'var(--neon-green)' }}>ai.apiKey</code> or <code style={{ color: 'var(--neon-green)' }}>ai.baseUrl</code> in <code style={{ color: 'var(--neon-green)' }}>backend/config.json</code>).
+                  </div>
+                )}
+                {aiEnabled && !aiLoading && !aiResult && !aiError && (
+                  <div style={{ color: 'var(--text-dim)', lineHeight: 1.7 }}>
+                    &gt; Type a description (e.g. "find the largest log file under /var/log") and press Enter.
+                  </div>
+                )}
+                {aiEnabled && aiLoading && (
+                  <div style={{ color: 'var(--text-dim)' }}>&gt; thinking...</div>
+                )}
+                {aiError && (
+                  <div style={{ color: '#ff5f56' }}>&gt; error: {aiError}</div>
+                )}
+                {aiResult && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div style={{ background: 'rgba(0,0,0,0.4)', padding: '8px 12px',
+                                  border: '1px solid rgba(0,255,0,0.2)', borderRadius: 4,
+                                  whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                      <code style={{ color: 'var(--neon-green)' }}>{aiResult.command || '(no command)'}</code>
+                    </div>
+                    <div style={{ color: aiResult.danger === 'destructive' ? '#ff5f56'
+                                    : aiResult.danger === 'caution' ? '#ffbd2e'
+                                    : 'var(--neon-green)',
+                                  fontSize: '0.75rem', letterSpacing: 2 }}>
+                      [{aiResult.danger.toUpperCase()}]
+                    </div>
+                    <div style={{ color: 'var(--text-dim)', fontSize: '0.78rem', lineHeight: 1.6 }}>
+                      {aiResult.explanation}
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <button className="wb-module btn" style={{ padding: '6px 12px' }}
+                        onClick={() => navigator.clipboard && navigator.clipboard.writeText(aiResult.command || '')}>
+                        [COPY]
+                      </button>
+                      {aiResult.danger !== 'destructive' && aiResult.command && (
+                        <button className="wb-module btn"
+                          style={{ padding: '6px 12px', color: 'var(--neon-cyan)' }}
+                          onClick={() => insertIntoTerminal(aiResult.command)}>
+                          [INSERT INTO TERMINAL]
+                        </button>
+                      )}
+                      {aiResult.danger === 'destructive' && (
+                        <span style={{ color: '#ff5f56', fontSize: '0.7rem' }}>
+                          destructive — copy only
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
 
             {/* Webapps mode */}

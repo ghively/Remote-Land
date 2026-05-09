@@ -655,7 +655,18 @@ function WSTerminalSession({ wsUrl }) {
     const ro = new ResizeObserver(onResize);
     if (containerRef.current) ro.observe(containerRef.current);
 
-    return () => { ro.disconnect(); ws.close(); term.dispose(); };
+    // Register a sink so the launcher's [INSERT INTO TERMINAL] can route
+    // commands into the most-recently-opened terminal.
+    if (!window.__nasTerminalSinks) window.__nasTerminalSinks = new Set();
+    const sink = (text) => {
+      if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'input', data: text }));
+    };
+    window.__nasTerminalSinks.add(sink);
+
+    return () => {
+      window.__nasTerminalSinks.delete(sink);
+      ro.disconnect(); ws.close(); term.dispose();
+    };
   }, [wsUrl]);
 
   return <div ref={containerRef} style={{ flex: 1, height: '100%', minHeight: 0, background: '#050505' }} />;
