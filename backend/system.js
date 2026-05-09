@@ -1,7 +1,17 @@
 const fs = require('fs').promises;
+const os = require('os');
 const { exec } = require('child_process');
 const util = require('util');
 const execAsync = util.promisify(exec);
+
+function formatUptime(secs) {
+  const d = Math.floor(secs / 86400);
+  const h = Math.floor((secs % 86400) / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
 
 function parseCpuLine(line) {
   const parts = line.trim().split(/\s+/);
@@ -72,11 +82,17 @@ async function getStats() {
     txDelta += net2[iface].tx - (net1[iface]?.tx || 0);
   }
 
+  // Uptime + load — cheap, no /proc parsing required.
+  const uptimeSecs = os.uptime();
+  const [load1, load5, load15] = os.loadavg();
+
   return {
     cpu:     { percent: Math.round(cpuPercent * 10) / 10 },
     ram,
     disk,
     network: { rxBytesPerSec: rxDelta * 2, txBytesPerSec: txDelta * 2 },
+    uptime:  { seconds: Math.round(uptimeSecs), formatted: formatUptime(uptimeSecs) },
+    load:    { one: load1, five: load5, fifteen: load15 },
   };
 }
 
@@ -90,4 +106,4 @@ async function getProcesses() {
   });
 }
 
-module.exports = { getStats, getProcesses, parseCpuLine, parseMemInfo, parseNetDev };
+module.exports = { getStats, getProcesses, parseCpuLine, parseMemInfo, parseNetDev, formatUptime };

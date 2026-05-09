@@ -233,6 +233,8 @@ function SystemMonitor() {
           net_tx: txKb,
           disk_read: diskPct,
           disk_write: 0,
+          load: s.load ? [s.load.one, s.load.five, s.load.fifteen].map(n => n.toFixed(2)) : prev.load,
+          uptime: (s.uptime && s.uptime.formatted) || prev.uptime,
         }));
         setProcs(p.map(row => ({
           pid:  row.pid,
