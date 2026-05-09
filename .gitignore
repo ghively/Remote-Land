@@ -5,3 +5,6 @@
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Backend config (contains API key — never commit)
+backend/config.json
