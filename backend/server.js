@@ -1,5 +1,6 @@
 const express = require('express');
 const http = require('http');
+const path = require('path');
 const cors = require('cors');
 const system = require('./system');
 const docker = require('./docker');
@@ -21,6 +22,19 @@ function createApp(config) {
   }));
   app.use(express.json());
 
+  // ── Frontend static files ──────────────────────────────────────────────
+  // Serve the cyber-noir UI so the entire app is accessible at http://host:port
+  const frontendDir = path.resolve(__dirname, '..', 'frontend');
+
+  // Root serves the main UI
+  app.get('/', (req, res) => {
+    res.sendFile(path.join(frontendDir, 'NAS Terminal.html'));
+  });
+
+  // Static assets (CSS, JSX components, images, etc.)
+  app.use(express.static(frontendDir));
+
+  // ── Auth middleware ────────────────────────────────────────────────────
   const auth = (req, res, next) => {
     if (req.headers['x-api-key'] !== config.apiKey) {
       return res.status(401).json({ error: 'Unauthorized' });
