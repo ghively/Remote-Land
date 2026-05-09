@@ -21,16 +21,16 @@ const PANEL_APPS = [
   { id: 'services',  name: 'Services',   desc: 'systemctl units',    icon: '[SC]', cat: 'SYSTEM' },
   { id: 'netmap',    name: 'Network',    desc: 'Network Map',        icon: '[NM]', cat: 'SYSTEM' },
   { id: 'cron',      name: 'Cron',       desc: 'Job Scheduler',      icon: '[CR]', cat: 'SYSTEM' },
-  { id: 'apicfg',    name: 'API Config', desc: 'Keys & endpoints',   icon: '[CF]', cat: 'SYSTEM' },
+  { id: 'apicfg',    name: 'Backend Config', desc: 'Host & API key',     icon: '[CF]', cat: 'SYSTEM' },
   { id: 'settings',  name: 'Settings',   desc: 'Theme & appearance', icon: '[ST]', cat: 'SYSTEM' },
   { id: 'browser',   name: 'Browser',    desc: 'Web Browser',        icon: '[WW]', cat: 'SYSTEM' },
   { id: 'devdocs',   name: 'Dev Guide',  desc: 'Developer docs',     icon: '[?]',  cat: 'SYSTEM' },
 ];
 
 const MEDIA_APPS = [
-  { id: 'radarr',    name: 'Radarr',     desc: 'Movie Manager — Native API',  icon: '[RR]', cat: 'MEDIA',  url: 'http://nas.local:7878' },
-  { id: 'sonarr',    name: 'Sonarr',     desc: 'TV Manager — Native API',     icon: '[SR]', cat: 'MEDIA',  url: 'http://nas.local:8989' },
-  { id: 'sabnzbd',   name: 'SABnzbd',    desc: 'NZB Downloader — Native API', icon: '[SB]', cat: 'MEDIA',  url: 'http://nas.local:8080' },
+  { id: 'radarr',    name: 'Radarr',     desc: 'Movie Manager — Backend Summary',  icon: '[RR]', cat: 'MEDIA',  url: 'http://nas.local:7878' },
+  { id: 'sonarr',    name: 'Sonarr',     desc: 'TV Manager — Backend Summary',     icon: '[SR]', cat: 'MEDIA',  url: 'http://nas.local:8989' },
+  // SABnzbd hidden in v1 — backend has no /api/media/sabnzbd endpoint yet.
 ];
 
 const STORAGE_KEY = 'nas_wm_webapps';
