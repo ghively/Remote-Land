@@ -4,6 +4,7 @@ const cors = require('cors');
 const system = require('./system');
 const docker = require('./docker');
 const media = require('./media');
+const ai = require('./ai');
 const { attachTerminal } = require('./terminal');
 
 function createApp(config) {
@@ -27,7 +28,9 @@ function createApp(config) {
     next();
   };
 
-  app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
+  app.get('/api/health', (req, res) =>
+    res.json({ status: 'ok', ai: ai.isConfigured(config) ? 'configured' : 'disabled' })
+  );
 
   app.get('/api/system/stats', auth, async (req, res) => {
     try { res.json(await system.getStats()); }
@@ -72,6 +75,57 @@ function createApp(config) {
   app.get('/api/media/sonarr', auth, async (req, res) => {
     try { res.json(await media.getSonarrData(config)); }
     catch (_) { res.json({ status: 'offline' }); }
+  });
+
+  // ── AI ──────────────────────────────────────────────────────────────────────
+  app.post('/api/ai/chat', auth, async (req, res) => {
+    if (!ai.isConfigured(config)) return res.status(503).json({ error: 'AI not configured' });
+    if (!Array.isArray(req.body.messages) || req.body.messages.length === 0) {
+      return res.status(400).json({ error: 'messages required' });
+    }
+    res.setHeader('content-type', 'text/event-stream');
+    res.setHeader('cache-control', 'no-cache');
+    res.setHeader('connection', 'keep-alive');
+    try {
+      for await (const event of ai.streamChat(config, req.body.messages)) {
+        res.write(`data: ${JSON.stringify(event)}\n\n`);
+      }
+    } catch (err) {
+      res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+    }
+    res.write('data: [DONE]\n\n');
+    res.end();
+  });
+
+  app.post('/api/ai/shell', auth, async (req, res) => {
+    if (!ai.isConfigured(config)) return res.status(503).json({ error: 'AI not configured' });
+    if (typeof req.body.intent !== 'string' || !req.body.intent.trim()) {
+      return res.status(400).json({ error: 'intent required' });
+    }
+    try {
+      res.json(await ai.suggestShell(config, req.body.intent));
+    } catch (err) {
+      res.status(502).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/ai/analyze-logs', auth, async (req, res) => {
+    if (!ai.isConfigured(config)) return res.status(503).json({ error: 'AI not configured' });
+    if (!Array.isArray(req.body.lines) || req.body.lines.length === 0) {
+      return res.status(400).json({ error: 'lines required' });
+    }
+    res.setHeader('content-type', 'text/event-stream');
+    res.setHeader('cache-control', 'no-cache');
+    res.setHeader('connection', 'keep-alive');
+    try {
+      for await (const event of ai.streamLogAnalysis(config, req.body.lines)) {
+        res.write(`data: ${JSON.stringify(event)}\n\n`);
+      }
+    } catch (err) {
+      res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+    }
+    res.write('data: [DONE]\n\n');
+    res.end();
   });
 
   return app;
