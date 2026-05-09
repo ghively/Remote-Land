@@ -216,7 +216,7 @@ function RadarrPanelFull({ onOpenWebUI }) {
     return 0;
   });
 
-  if (showCfg) return <ApiConfigPanel onSave={() => { setShowCfg(false); load(); }} />;
+  if (showCfg) return <BackendConfigPanel onSave={() => { setShowCfg(false); load(); }} />;
   if (detail)  return <MovieDetail movie={detail} onClose={() => setDetail(null)} onDelete={deleteMovie} onSearch={triggerSearch} onToggleMonitor={toggleMonitor} />;
 
   return (
@@ -538,7 +538,7 @@ function SonarrPanelFull({ onOpenWebUI }) {
     return 0;
   });
 
-  if (showCfg) return <ApiConfigPanel onSave={() => { setShowCfg(false); load(); }} />;
+  if (showCfg) return <BackendConfigPanel onSave={() => { setShowCfg(false); load(); }} />;
   if (detail)  return <SeriesDetail series={detail} onClose={() => setDetail(null)} onToggleMonitor={toggleMonitor} />;
 
   return (
@@ -845,7 +845,7 @@ function SABnzbdPanelFull({ onOpenWebUI }) {
 
   const cats = ['all', ...[...new Set((queueData?.slots || []).map(s => s.cat).concat(history.map(h => h.category)).filter(Boolean))]];
 
-  if (showCfg) return <ApiConfigPanel onSave={() => { setShowCfg(false); load(); }} />;
+  if (showCfg) return <BackendConfigPanel onSave={() => { setShowCfg(false); load(); }} />;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', position: 'relative' }}>

@@ -624,7 +624,7 @@ function WMDesktop({ user, host, onLogout }) {
       case 'radarr':    return <RadarrPanel  onOpenWebUI={() => { spawnWindow('webapp', { name: 'Radarr',  url: (loadConfig().radarr.url  || 'http://nas.local:7878') }); notify('> OPENING RADARR WEB UI', 'ok'); }} />;
       case 'sonarr':    return <SonarrPanel  onOpenWebUI={() => { spawnWindow('webapp', { name: 'Sonarr',  url: (loadConfig().sonarr.url  || 'http://nas.local:8989') }); notify('> OPENING SONARR WEB UI', 'ok'); }} />;
       case 'sabnzbd':   return <SABnzbdPanel onOpenWebUI={() => { spawnWindow('webapp', { name: 'SABnzbd', url: (loadConfig().sabnzbd.url || 'http://nas.local:8080') }); notify('> OPENING SABNZBD WEB UI', 'ok'); }} />;
-      case 'apicfg':    return <ApiConfigPanel onSave={() => { notify('> API CONFIG SAVED', 'ok'); closeWindow(win.id); }} />;
+      case 'apicfg':    return <BackendConfigPanel onSave={() => { notify('> BACKEND CONFIG SAVED', 'ok'); closeWindow(win.id); }} />;
       case 'aichat':    return <AIChatPanel />;
       default: return null;
     }

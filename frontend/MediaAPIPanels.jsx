@@ -95,7 +95,7 @@ function ProgressBar({ pct, color = 'green' }) {
 // the browser. This panel only configures how the browser reaches the
 // NAS Terminal backend agent itself.
 // ══════════════════════════════════════════════════════════════════════════════
-function ApiConfigPanel({ onSave }) {
+function BackendConfigPanel({ onSave }) {
   const ctx = window.useBackend ? window.useBackend() : { host: 'nas.local', apiKey: '__demo__' };
   const [host, setHost]     = useState(ctx.host || 'nas.local');
   const [apiKey, setApiKey] = useState(ctx.apiKey === '__demo__' ? '' : (ctx.apiKey || ''));
@@ -408,7 +408,7 @@ function SABnzbdPanel({ onOpenWebUI }) {
     return total > 0 ? ((total - left) / total) * 100 : 0;
   })() : 0;
 
-  if (showCfg) return <ApiConfigPanel onSave={() => { setShowCfg(false); load(); }} />;
+  if (showCfg) return <BackendConfigPanel onSave={() => { setShowCfg(false); load(); }} />;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
@@ -514,4 +514,4 @@ function SABnzbdPanel({ onOpenWebUI }) {
 }
 
 // Export
-Object.assign(window, { RadarrPanel, SonarrPanel, SABnzbdPanel, ApiConfigPanel, loadConfig });
+Object.assign(window, { RadarrPanel, SonarrPanel, SABnzbdPanel, BackendConfigPanel, loadConfig });
