@@ -6,5 +6,12 @@
     "emby":   { "url": "http://localhost:8096", "apiKey": "" },
     "radarr": { "url": "http://localhost:7878", "apiKey": "" },
     "sonarr": { "url": "http://localhost:8989", "apiKey": "" }
+  },
+  "ai": {
+    "baseUrl":    "https://api.openai.com/v1",
+    "apiKey":     "",
+    "chatModel":  "gpt-4o-mini",
+    "shellModel": "gpt-4o-mini",
+    "logModel":   "gpt-4o-mini"
   }
 }
