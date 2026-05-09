@@ -17,11 +17,9 @@ function parseMemInfo(content) {
     const m = content.match(new RegExp(`^${key}:\\s+(\\d+)`, 'm'));
     return m ? parseInt(m[1]) * 1024 : 0;
   };
-  const total = get('MemTotal');
-  const free  = get('MemFree');
-  const buffers = get('Buffers');
-  const cached  = get('Cached');
-  return { total, used: total - free - buffers - cached };
+  const total     = get('MemTotal');
+  const available = get('MemAvailable');
+  return { total, used: total - available };
 }
 
 function parseNetDev(content) {

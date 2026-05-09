@@ -39,7 +39,7 @@ cp config.example.json config.json
 nano config.json   # set apiKey, port, media service URLs + API keys
 
 # 4. Create a dedicated service user
-sudo useradd -r -s /bin/false nas-terminal
+sudo useradd -r -s /bin/bash nas-terminal
 sudo usermod -aG docker nas-terminal   # grants Docker socket access
 
 # 5. Install systemd service
