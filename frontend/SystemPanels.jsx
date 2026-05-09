@@ -342,10 +342,13 @@ function seedLogs() {
 }
 
 function LogViewer() {
+  const { ai, aiEnabled, isDemo } = useBackend();
   const [logs, setLogs] = useState(seedLogs);
   const [filter, setFilter] = useState('');
   const [follow, setFollow] = useState(true);
   const [levelFilter, setLevelFilter] = useState('all');
+  const [analysis, setAnalysis] = useState(null); // { text, error, usage, streaming }
+  const abortRef = useRef(null);
   const bodyRef = useRef(null);
 
   useEffect(() => {
@@ -369,6 +372,40 @@ function LogViewer() {
     return matchText && matchLevel;
   });
 
+  const analyze = async () => {
+    if (!ai) return;
+    if (analysis && analysis.streaming) return;
+    let lines = filtered.map(l => `${l.ts} ${l.svc}: ${l.msg}`);
+    if (lines.length > 500) {
+      if (!confirm(`Analyze the 500 most recent lines? (out of ${lines.length})`)) return;
+      lines = lines.slice(-500);
+    }
+    setAnalysis({ text: '', streaming: true });
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    try {
+      for await (const ev of ai.analyzeLogs(lines, ctrl.signal)) {
+        if (ev.delta) {
+          setAnalysis(a => ({ ...(a || {}), text: ((a && a.text) || '') + ev.delta }));
+        } else if (ev.error) {
+          setAnalysis(a => ({ ...(a || {}), text: ((a && a.text) || '') + `\n[error: ${ev.error}]`, error: true }));
+        } else if (ev.done) {
+          setAnalysis(a => ({ ...(a || {}), streaming: false, usage: ev.usage }));
+        }
+      }
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        setAnalysis(a => ({ ...(a || {}), text: ((a && a.text) || '') + `\n[error: ${err.message}]`, error: true, streaming: false }));
+      }
+    } finally {
+      abortRef.current = null;
+      setAnalysis(a => (a ? { ...a, streaming: false } : a));
+    }
+  };
+
+  const stopAnalysis  = () => { if (abortRef.current) abortRef.current.abort(); };
+  const closeAnalysis = () => { stopAnalysis(); setAnalysis(null); };
+
   return (
     <div className="logview-pane">
       <div className="logview-toolbar">
@@ -382,7 +419,36 @@ function LogViewer() {
         <Btn label={levelFilter === 'all' ? '[ALL]' : `[${levelFilter.toUpperCase()}]`} cls="cyan" onClick={() => setLevelFilter(l => l === 'all' ? 'err' : l === 'err' ? 'warn' : 'all')} />
         <Btn label={follow ? '[FOLLOW: ON]' : '[FOLLOW: OFF]'} cls={follow ? 'cyan' : ''} onClick={() => setFollow(f => !f)} />
         <Btn label="[CLEAR]" onClick={() => setLogs([])} />
+        <Btn label="[ANALYZE]" cls={analysis ? 'cyan' : ''}
+             disabled={isDemo || !aiEnabled || filtered.length === 0 || (analysis && analysis.streaming)}
+             onClick={analyze} />
       </div>
+      {analysis && (
+        <div style={{ borderBottom: '1px solid rgba(0,255,0,0.1)', padding: '10px 12px',
+                      background: 'rgba(0,0,0,0.4)', maxHeight: 220, overflowY: 'auto',
+                      scrollbarWidth: 'thin', scrollbarColor: 'rgba(0,255,0,0.3) transparent' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <span style={{ color: 'var(--neon-cyan)', letterSpacing: 2, fontSize: '0.75rem',
+                           textShadow: 'var(--bloom-cyan)' }}>
+              [LOG_ANALYSIS]{analysis.streaming ? ' …streaming…' : ''}
+            </span>
+            <span style={{ flex: 1 }} />
+            {analysis.streaming && <Btn label="[STOP]" onClick={stopAnalysis} />}
+            <Btn label="[CLOSE]" onClick={closeAnalysis} />
+          </div>
+          <div style={{ whiteSpace: 'pre-wrap',
+                        color: analysis.error ? '#ff5f56' : 'var(--text-primary)',
+                        fontFamily: 'var(--font-mono)', fontSize: '0.78rem', lineHeight: 1.6 }}>
+            {analysis.text || (analysis.streaming ? '> thinking...' : '')}
+          </div>
+          {analysis.usage && (
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-dim)', marginTop: 6 }}>
+              in: {analysis.usage.prompt_tokens != null ? analysis.usage.prompt_tokens : '?'}
+              {'  '}out: {analysis.usage.completion_tokens != null ? analysis.usage.completion_tokens : '?'}
+            </div>
+          )}
+        </div>
+      )}
       <div className="logview-body" ref={bodyRef}>
         {filtered.map((l, i) => (
           <div key={i} className="log-line">
