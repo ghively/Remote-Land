@@ -6,6 +6,7 @@
   <title>NAS_TERMINAL — Cyber-Noir Server Management</title>
   <link rel="stylesheet" href="colors_and_type.css">
   <link rel="stylesheet" href="wm-styles.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.5.0/css/xterm.min.css">
 
   <template id="__bundler_thumbnail">
     <svg viewBox="0 0 120 80" xmlns="http://www.w3.org/2000/svg">
@@ -46,7 +47,15 @@
     integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y"
     crossorigin="anonymous"></script>
 
+  <!-- xterm.js for the real PTY terminal pane (loaded before Babel-compiled JSX) -->
+  <script src="https://cdn.jsdelivr.net/npm/xterm@5.5.0/lib/xterm.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.10.0/lib/xterm-addon-fit.min.js"></script>
+
+  <!-- Plain JS REST client — must load before any JSX consumer -->
+  <script src="api.js"></script>
+
   <!-- Component files — order matters: dependencies first -->
+  <script type="text/babel" src="BackendContext.jsx"></script>
   <script type="text/babel" src="WindowManager.jsx"></script>
   <script type="text/babel" src="TerminalPane.jsx"></script>
   <script type="text/babel" src="SystemPanels.jsx"></script>
