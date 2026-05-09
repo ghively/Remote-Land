@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git init *)",
+      "Bash(git remote *)",
+      "Bash(git add *)",
+      "Bash(git push *)",
+      "Bash(git -c commit.gpgsign=false add .)",
+      "Bash(git -c commit.gpgsign=false commit -m \"Initial commit\")"
+    ]
+  }
+}

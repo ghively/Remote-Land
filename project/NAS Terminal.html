@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NAS_TERMINAL — Cyber-Noir Server Management</title>
+  <link rel="stylesheet" href="colors_and_type.css">
+  <link rel="stylesheet" href="wm-styles.css">
+
+  <template id="__bundler_thumbnail">
+    <svg viewBox="0 0 120 80" xmlns="http://www.w3.org/2000/svg">
+      <rect width="120" height="80" fill="#050505"/>
+      <rect x="0" y="0" width="120" height="8" fill="#000800"/>
+      <text x="6" y="6" font-size="5" fill="#00f3ff" font-family="monospace">NAS_TERMINAL</text>
+      <text x="90" y="6" font-size="4" fill="#00ff00" font-family="monospace">03:14:21</text>
+      <rect x="4" y="12" width="54" height="40" rx="2" fill="rgba(10,10,15,0.9)" stroke="#00ff00" stroke-width="0.5" opacity="0.8"/>
+      <text x="8" y="20" font-size="4" fill="#00f3ff" font-family="monospace">TERMINAL_SESSION</text>
+      <text x="8" y="27" font-size="3.5" fill="#00ff00" font-family="monospace">root@nas:~#</text>
+      <text x="8" y="33" font-size="3" fill="#ccffcc" font-family="monospace">$ docker ps</text>
+      <text x="8" y="39" font-size="3" fill="#ccffcc" font-family="monospace">emby      Up 2d</text>
+      <text x="8" y="45" font-size="3" fill="#ccffcc" font-family="monospace">radarr    Up 5d</text>
+      <rect x="62" y="12" width="54" height="40" rx="2" fill="rgba(10,10,15,0.9)" stroke="rgba(0,255,0,0.4)" stroke-width="0.5"/>
+      <text x="66" y="20" font-size="4" fill="#00f3ff" font-family="monospace">SYSTEM_MONITOR</text>
+      <rect x="66" y="24" width="40" height="3" rx="1" fill="rgba(0,255,0,0.1)" stroke="rgba(0,255,0,0.2)" stroke-width="0.3"/>
+      <rect x="66" y="24" width="16" height="3" rx="1" fill="#00ff00"/>
+      <text x="108" y="27" font-size="3" fill="#00ff00" font-family="monospace">38%</text>
+      <rect x="66" y="30" width="40" height="3" rx="1" fill="rgba(0,255,0,0.1)" stroke="rgba(0,255,0,0.2)" stroke-width="0.3"/>
+      <rect x="66" y="30" width="25" height="3" rx="1" fill="#00ff00"/>
+      <text x="108" y="33" font-size="3" fill="#00ff00" font-family="monospace">62%</text>
+      <rect x="0" y="72" width="120" height="8" fill="#000800"/>
+      <text x="4" y="77" font-size="4" fill="rgba(0,255,0,0.5)" font-family="monospace">[LAUNCHER] [+TERM] [FILES] [MONITOR] [DOCKER]</text>
+    </svg>
+  </template>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- React + Babel -->
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js"
+    integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L"
+    crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"
+    integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm"
+    crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"
+    integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y"
+    crossorigin="anonymous"></script>
+
+  <!-- Component files — order matters: dependencies first -->
+  <script type="text/babel" src="WindowManager.jsx"></script>
+  <script type="text/babel" src="TerminalPane.jsx"></script>
+  <script type="text/babel" src="SystemPanels.jsx"></script>
+  <script type="text/babel" src="MediaAPIPanels.jsx"></script>
+  <script type="text/babel" src="MediaPanelsFull.jsx"></script>
+  <script type="text/babel" src="BrowserPanel.jsx"></script>
+  <script type="text/babel" src="SettingsPanel.jsx"></script>
+  <script type="text/babel" src="AppLauncher.jsx"></script>
+  <script type="text/babel" src="NASTerminal.jsx"></script>
+
+  <!-- Rainbow border driver — plain script, NOT Babel, so rAF persists correctly -->
+  <script>
+    (function startRainbow() {
+      var angle = 0;
+      // 6s per revolution — calm, matches hyprland borderangle loop
+      var degPerFrame = 360 / (60 * 6);
+
+      window.__rainbowSetSpeed = function(secondsPerRev) {
+        degPerFrame = 360 / (60 * Math.max(0.5, secondsPerRev));
+      };
+
+      function tick() {
+        angle = (angle + degPerFrame) % 360;
+        var grad = 'conic-gradient(from ' + angle + 'deg, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)';
+        document.documentElement.style.setProperty('--gradient-angle', angle + 'deg');
+        // Paint all rings directly
+        var rings = document.querySelectorAll('.wm-ring, .rofi-ring');
+        for (var i = 0; i < rings.length; i++) {
+          rings[i].style.background = grad;
+        }
+        requestAnimationFrame(tick);
+      }
+
+      requestAnimationFrame(tick);
+    })();
+  </script>
+</body>
+</html>
