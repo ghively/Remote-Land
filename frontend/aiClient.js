@@ -37,10 +37,12 @@
     }
 
     return {
-      chat: (messages, signal, opts) => streamSSE('/api/ai/chat', {
-        messages,
-        ...((opts && typeof opts.includeContext === 'boolean') ? { includeContext: opts.includeContext } : {}),
-      }, signal),
+      chat: (messages, signal, opts) => {
+        const body = { messages };
+        if (opts && typeof opts.includeContext === 'boolean') body.includeContext = opts.includeContext;
+        if (opts && typeof opts.useTools       === 'boolean') body.useTools       = opts.useTools;
+        return streamSSE('/api/ai/chat', body, signal);
+      },
       analyzeLogs: (lines, signal)    => streamSSE('/api/ai/analyze-logs', { lines }, signal),
       shell:       async (intent) => {
         const res = await fetch(`${base}/api/ai/shell`, {

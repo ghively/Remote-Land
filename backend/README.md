@@ -102,6 +102,28 @@ is set. Per-feature model overrides: `chatModel`, `shellModel`, `logModel`.
 
 `GET /api/health` exposes `ai: "configured" | "disabled"` (no auth).
 
+### Chat extras
+
+`POST /api/ai/chat` accepts two optional flags in the request body:
+
+- `includeContext` (default `true`) — prepends a compact `<live-snapshot>`
+  system message built from `/api/system/stats` + `/api/docker/containers`
+  (CPU/RAM/disk/network/uptime/load + container roster). Set to `false` to
+  skip the snapshot collection entirely.
+- `useTools` (default `true`) — exposes a small **read-only** tool surface
+  the model may call mid-response: `getSystemStats`, `getProcesses`,
+  `listContainers`, `containerLogs(nameOrId)`, `mediaStatus(service)`.
+  When the model emits `tool_calls`, the backend executes them, feeds
+  results back, and continues — looping up to 5 iterations. Stream events
+  for tool activity are surfaced as `{tool_call_start: {...}}` and
+  `{tool_call_result: {id, name, ok}}`.
+
+These are toggle-able from the chat panel toolbar (`[CTX:ON/OFF]` and
+`[TOOLS:ON/OFF]`). Tool calling is read-only by design — there is no
+backend tool that runs shell commands, modifies files, or starts/stops
+containers from the AI loop. Mutating actions still require explicit
+user confirmation through the existing UI.
+
 ## Running tests
 
 ```bash

@@ -9,9 +9,15 @@ jest.mock('../docker', () => ({
   stopContainer:  jest.fn(),
   getLogs:        jest.fn(),
 }));
+jest.mock('../media', () => ({
+  getEmbyData:   jest.fn(),
+  getRadarrData: jest.fn(),
+  getSonarrData: jest.fn(),
+}));
 const axios   = require('axios');
 const system  = require('../system');
 const docker  = require('../docker');
+const media   = require('../media');
 const ai = require('../ai');
 
 // Helper: build a fake fetch Response with a streamable body.
@@ -227,6 +233,143 @@ describe('streamChat with live context', () => {
 
     // Only the static SYSTEM_CHAT message — no snapshot block on failure.
     expect(captured.messages.filter(m => m.role === 'system').length).toBe(1);
+  });
+});
+
+describe('streamChat tool calling', () => {
+  afterEach(() => { delete global.fetch; jest.clearAllMocks(); });
+
+  // Builds a fake fetch that returns a fresh stream on each call. `pages`
+  // is an array of arrays-of-SSE-chunks — one page per HTTP request.
+  function fakeMultiPageFetch(pages) {
+    let i = 0;
+    return jest.fn().mockImplementation(() => {
+      const chunks = pages[i++] || ['data: [DONE]\n\n'];
+      return Promise.resolve(fakeStreamResponse(chunks));
+    });
+  }
+
+  test('executes tool then continues with the model response', async () => {
+    docker.getContainers.mockResolvedValue([
+      { id: 'a1', name: 'emby',   image: 'e/e:1', state: 'running', status: 'Up 2d' },
+      { id: 'b2', name: 'radarr', image: 'l/r:1', state: 'running', status: 'Up 5d' },
+    ]);
+
+    global.fetch = fakeMultiPageFetch([
+      // Pass 1: model emits a tool_calls request and stops.
+      [
+        'data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"listContainers","arguments":""}}]}}]}\n\n',
+        'data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{}"}}]}}]}\n\n',
+        'data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}\n\n',
+        'data: [DONE]\n\n',
+      ],
+      // Pass 2: model uses the tool result to write a normal text reply.
+      [
+        'data: {"choices":[{"index":0,"delta":{"content":"You have 2 containers."}}]}\n\n',
+        'data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n',
+        'data: [DONE]\n\n',
+      ],
+    ]);
+
+    const events = [];
+    for await (const ev of ai.streamChat(KEYED, [{ role: 'user', content: 'how many containers?' }], { useTools: true })) {
+      events.push(ev);
+    }
+
+    // Sequence: tool_call_start → tool_call_result → delta(s) → done
+    expect(events[0]).toEqual({ tool_call_start: { id: 'call_1', name: 'listContainers', arguments: '{}' } });
+    expect(events[1]).toEqual({ tool_call_result: { id: 'call_1', name: 'listContainers', ok: true } });
+    expect(events.find(e => e.delta)).toEqual({ delta: 'You have 2 containers.' });
+    expect(events[events.length - 1]).toEqual({ done: true, usage: null });
+
+    // listContainers actually ran.
+    expect(docker.getContainers).toHaveBeenCalled();
+
+    // Second request body must include the assistant tool_calls + tool result message.
+    const secondBody = JSON.parse(global.fetch.mock.calls[1][1].body);
+    const assistantTurn = secondBody.messages[secondBody.messages.length - 2];
+    const toolTurn      = secondBody.messages[secondBody.messages.length - 1];
+    expect(assistantTurn.role).toBe('assistant');
+    expect(assistantTurn.tool_calls[0].id).toBe('call_1');
+    expect(assistantTurn.tool_calls[0].function.name).toBe('listContainers');
+    expect(toolTurn.role).toBe('tool');
+    expect(toolTurn.tool_call_id).toBe('call_1');
+    expect(toolTurn.content).toMatch(/emby/);
+  });
+
+  test('reports tool errors via tool_call_result ok:false and lets the model recover', async () => {
+    docker.getContainers.mockResolvedValue([
+      { id: 'a1', name: 'emby', image: 'e/e:1', state: 'running', status: 'Up 2d' },
+    ]);
+
+    global.fetch = fakeMultiPageFetch([
+      [
+        'data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_2","type":"function","function":{"name":"containerLogs","arguments":"{\\"nameOrId\\":\\"nope\\"}"}}]}}]}\n\n',
+        'data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}\n\n',
+        'data: [DONE]\n\n',
+      ],
+      [
+        'data: {"choices":[{"index":0,"delta":{"content":"That container does not exist."}}]}\n\n',
+        'data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n',
+        'data: [DONE]\n\n',
+      ],
+    ]);
+
+    const events = [];
+    for await (const ev of ai.streamChat(KEYED, [{ role: 'user', content: 'show logs for nope' }], { useTools: true })) {
+      events.push(ev);
+    }
+
+    const result = events.find(e => e.tool_call_result);
+    expect(result.tool_call_result.ok).toBe(false);
+    expect(events.find(e => e.delta && /does not exist/.test(e.delta))).toBeTruthy();
+  });
+
+  test('caps the tool-call loop and surfaces an error event', async () => {
+    docker.getContainers.mockResolvedValue([]);
+    // Every page asks for the same tool call again — trips the cap.
+    const loopPage = [
+      'data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_x","type":"function","function":{"name":"listContainers","arguments":"{}"}}]}}]}\n\n',
+      'data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}\n\n',
+      'data: [DONE]\n\n',
+    ];
+    global.fetch = fakeMultiPageFetch([loopPage, loopPage, loopPage]);
+
+    const events = [];
+    for await (const ev of ai.streamChat(KEYED, [{ role: 'user', content: 'hi' }], {
+      useTools: true, includeContext: false, maxIterations: 3,
+    })) {
+      events.push(ev);
+    }
+
+    expect(events.find(e => e.error && /loop exceeded/.test(e.error))).toBeTruthy();
+    expect(events[events.length - 1]).toEqual({ done: true, usage: null });
+    expect(global.fetch).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('executeTool', () => {
+  afterEach(() => jest.clearAllMocks());
+
+  test('containerLogs maps a container name to its id', async () => {
+    docker.getContainers.mockResolvedValue([
+      { id: 'abc123def456', name: 'emby', image: 'e/e:1', state: 'running', status: 'Up 2d' },
+    ]);
+    docker.getLogs.mockResolvedValue('line1\nline2\nline3\n');
+    const out = await ai._internals.executeTool('containerLogs', { nameOrId: 'emby' }, KEYED);
+    expect(docker.getLogs).toHaveBeenCalledWith('abc123def456');
+    expect(out.name).toBe('emby');
+    expect(out.logs).toMatch(/line2/);
+  });
+
+  test('mediaStatus dispatches by service', async () => {
+    media.getEmbyData.mockResolvedValue({ activeSessions: 1 });
+    const out = await ai._internals.executeTool('mediaStatus', { service: 'emby' }, KEYED);
+    expect(out).toEqual({ activeSessions: 1 });
+  });
+
+  test('rejects unknown tool', async () => {
+    await expect(ai._internals.executeTool('nope', {}, KEYED)).rejects.toThrow(/unknown tool/);
   });
 });
 

@@ -6,6 +6,7 @@
 const axios = require('axios');
 const system = require('./system');
 const docker = require('./docker');
+const media  = require('./media');
 
 const SYSTEM_CHAT = `You are the NAS Terminal AI assistant — a Linux server
 co-pilot. The user is running a self-hosted media server (Emby, Radarr, Sonarr,
@@ -95,6 +96,124 @@ function formatContextMessage(snapshot) {
   return lines.join('\n');
 }
 
+// ── Read-only tools the model may call during chat ─────────────────────────
+const CHAT_TOOLS = [
+  {
+    type: 'function',
+    function: {
+      name: 'getSystemStats',
+      description: 'Return current CPU/RAM/disk/network/uptime/load averages.',
+      parameters: { type: 'object', properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'getProcesses',
+      description: 'Return the top-20 processes by CPU as {user, pid, cpu, mem, cmd}.',
+      parameters: { type: 'object', properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'listContainers',
+      description: 'Return all Docker containers as {id, name, image, status, state}.',
+      parameters: { type: 'object', properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'containerLogs',
+      description: 'Return the last 100 log lines for a container by name or id.',
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          nameOrId: { type: 'string', description: 'Container name (e.g. "emby") or short id.' },
+        },
+        required: ['nameOrId'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'mediaStatus',
+      description: 'Return a summary for a media service (emby | radarr | sonarr).',
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          service: { type: 'string', enum: ['emby', 'radarr', 'sonarr'] },
+        },
+        required: ['service'],
+      },
+    },
+  },
+];
+
+async function executeTool(name, args, config) {
+  switch (name) {
+    case 'getSystemStats':
+      return await system.getStats();
+    case 'getProcesses':
+      return await system.getProcesses();
+    case 'listContainers':
+      return await docker.getContainers();
+    case 'containerLogs': {
+      const list = await docker.getContainers();
+      const target = list.find(c => c.name === args.nameOrId || c.id === args.nameOrId
+                                  || c.id.startsWith(args.nameOrId));
+      if (!target) throw new Error(`container "${args.nameOrId}" not found`);
+      const logs = await docker.getLogs(target.id);
+      // Limit to last 100 lines / 8KB to keep a single tool result bounded.
+      const lines = logs.split('\n').slice(-100).join('\n');
+      return { name: target.name, id: target.id, logs: lines.slice(-8192) };
+    }
+    case 'mediaStatus': {
+      const fn = ({ emby: media.getEmbyData, radarr: media.getRadarrData, sonarr: media.getSonarrData })[args.service];
+      if (!fn) throw new Error(`unknown service "${args.service}"`);
+      return await fn(config);
+    }
+    default:
+      throw new Error(`unknown tool "${name}"`);
+  }
+}
+
+// Yields raw upstream {choice, usage} events parsed out of the SSE stream.
+async function* streamRawSSE(config, body) {
+  const res = await fetch(endpoint(config), {
+    method: 'POST',
+    headers: authHeaders(config),
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`upstream HTTP ${res.status}: ${text.slice(0, 200)}`);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) return;
+    buf += decoder.decode(value, { stream: true });
+    const lines = buf.split('\n');
+    buf = lines.pop();
+    for (const line of lines) {
+      if (!line.startsWith('data:')) continue;
+      const payload = line.slice(5).trim();
+      if (!payload) continue;
+      if (payload === '[DONE]') return;
+      let evt;
+      try { evt = JSON.parse(payload); } catch (_) { continue; }
+      yield evt;
+    }
+  }
+}
+
 async function* streamChat(config, messages, opts) {
   const sysMessages = [{ role: 'system', content: SYSTEM_CHAT }];
   if (opts && opts.includeContext) {
@@ -104,11 +223,86 @@ async function* streamChat(config, messages, opts) {
       if (block) sysMessages.push({ role: 'system', content: block });
     } catch (_) { /* context optional */ }
   }
-  yield* streamCompletions(config, {
-    model:    (config.ai && config.ai.chatModel) || 'gpt-4o-mini',
-    messages: [...sysMessages, ...messages],
-    stream:   true,
-  });
+
+  const useTools = !(opts && opts.useTools === false);
+  const maxIterations = (opts && opts.maxIterations) || 5;
+  const history = [...sysMessages, ...messages];
+  let lastUsage = null;
+
+  for (let iter = 0; iter < maxIterations; iter++) {
+    const body = {
+      model:    (config.ai && config.ai.chatModel) || 'gpt-4o-mini',
+      messages: history,
+      stream:   true,
+    };
+    if (useTools) body.tools = CHAT_TOOLS;
+
+    let assistantContent = '';
+    const toolCalls = []; // [{id, name, arguments}]
+    let finishReason = null;
+
+    for await (const evt of streamRawSSE(config, body)) {
+      if (evt.usage) lastUsage = evt.usage;
+      const choice = evt.choices && evt.choices[0];
+      if (!choice) continue;
+      const delta = choice.delta || {};
+      if (delta.content) {
+        assistantContent += delta.content;
+        yield { delta: delta.content };
+      }
+      if (Array.isArray(delta.tool_calls)) {
+        for (const tc of delta.tool_calls) {
+          const idx = tc.index || 0;
+          if (!toolCalls[idx]) toolCalls[idx] = { id: '', name: '', arguments: '' };
+          if (tc.id) toolCalls[idx].id = tc.id;
+          if (tc.function && tc.function.name) toolCalls[idx].name += tc.function.name;
+          if (tc.function && typeof tc.function.arguments === 'string') {
+            toolCalls[idx].arguments += tc.function.arguments;
+          }
+        }
+      }
+      if (choice.finish_reason) finishReason = choice.finish_reason;
+    }
+
+    if (finishReason !== 'tool_calls' || toolCalls.length === 0) {
+      yield { done: true, usage: lastUsage };
+      return;
+    }
+
+    // Echo assistant turn back into history with the tool_calls array verbatim.
+    history.push({
+      role: 'assistant',
+      content: assistantContent || null,
+      tool_calls: toolCalls.map(tc => ({
+        id: tc.id,
+        type: 'function',
+        function: { name: tc.name, arguments: tc.arguments || '{}' },
+      })),
+    });
+
+    // Execute each tool serially, surface progress to the frontend, append results.
+    for (const tc of toolCalls) {
+      yield { tool_call_start: { id: tc.id, name: tc.name, arguments: tc.arguments } };
+      let result, ok = true;
+      try {
+        const args = tc.arguments ? JSON.parse(tc.arguments) : {};
+        result = await executeTool(tc.name, args, config);
+      } catch (err) {
+        result = { error: err.message };
+        ok = false;
+      }
+      yield { tool_call_result: { id: tc.id, name: tc.name, ok } };
+      history.push({
+        role: 'tool',
+        tool_call_id: tc.id,
+        content: JSON.stringify(result).slice(0, 16384),
+      });
+    }
+  }
+
+  // Hit the iteration cap without a clean end — tell the frontend, then close.
+  yield { error: `tool-call loop exceeded ${maxIterations} iterations` };
+  yield { done: true, usage: lastUsage };
 }
 
 async function* streamLogAnalysis(config, lines) {
@@ -188,5 +382,5 @@ async function* streamCompletions(config, body) {
 
 module.exports = {
   isConfigured, streamChat, suggestShell, streamLogAnalysis,
-  _internals: { endpoint, authHeaders, SHELL_SCHEMA },
+  _internals: { endpoint, authHeaders, SHELL_SCHEMA, executeTool, CHAT_TOOLS, formatContextMessage },
 };
