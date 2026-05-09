@@ -83,11 +83,13 @@ function createApp(config) {
     if (!Array.isArray(req.body.messages) || req.body.messages.length === 0) {
       return res.status(400).json({ error: 'messages required' });
     }
+    // Default: include a live system snapshot. Caller can opt out per-request.
+    const includeContext = req.body.includeContext !== false;
     res.setHeader('content-type', 'text/event-stream');
     res.setHeader('cache-control', 'no-cache');
     res.setHeader('connection', 'keep-alive');
     try {
-      for await (const event of ai.streamChat(config, req.body.messages)) {
+      for await (const event of ai.streamChat(config, req.body.messages, { includeContext })) {
         res.write(`data: ${JSON.stringify(event)}\n\n`);
       }
     } catch (err) {

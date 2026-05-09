@@ -1,5 +1,17 @@
 jest.mock('axios');
-const axios = require('axios');
+jest.mock('../system', () => ({
+  getStats:     jest.fn(),
+  getProcesses: jest.fn(),
+}));
+jest.mock('../docker', () => ({
+  getContainers:  jest.fn(),
+  startContainer: jest.fn(),
+  stopContainer:  jest.fn(),
+  getLogs:        jest.fn(),
+}));
+const axios   = require('axios');
+const system  = require('../system');
+const docker  = require('../docker');
 const ai = require('../ai');
 
 // Helper: build a fake fetch Response with a streamable body.
@@ -149,6 +161,72 @@ describe('suggestShell', () => {
     expect(callArgs[1].model).toBe('mistral-7b');
     expect(callArgs[1].temperature).toBe(0);
     expect(callArgs[1].response_format.type).toBe('json_schema');
+  });
+});
+
+describe('streamChat with live context', () => {
+  afterEach(() => { delete global.fetch; jest.clearAllMocks(); });
+
+  test('includes a <live-snapshot> system message when opts.includeContext', async () => {
+    system.getStats.mockResolvedValue({
+      cpu: { percent: 13.4 },
+      ram: { used: 4e9, total: 16e9 },
+      disk: { used: 200e9, total: 1000e9 },
+      network: { rxBytesPerSec: 1024, txBytesPerSec: 2048 },
+      uptime: { seconds: 86400, formatted: '1d 0h' },
+      load: { one: 0.5, five: 0.4, fifteen: 0.3 },
+    });
+    docker.getContainers.mockResolvedValue([
+      { id: 'a', name: 'emby',   image: 'e/e:latest', state: 'running', status: 'Up 2d' },
+      { id: 'b', name: 'radarr', image: 'l/r:latest', state: 'running', status: 'Up 5d' },
+    ]);
+
+    let captured;
+    global.fetch = jest.fn().mockImplementation((_url, init) => {
+      captured = JSON.parse(init.body);
+      return Promise.resolve(fakeStreamResponse(['data: [DONE]\n\n']));
+    });
+
+    // eslint-disable-next-line no-empty
+    for await (const _ of ai.streamChat(KEYED, [{ role: 'user', content: 'hi' }], { includeContext: true })) {}
+
+    const sysMsgs = captured.messages.filter(m => m.role === 'system');
+    expect(sysMsgs.length).toBe(2);
+    expect(sysMsgs[1].content).toMatch(/<live-snapshot>/);
+    expect(sysMsgs[1].content).toMatch(/CPU:\s+13\.4%/);
+    expect(sysMsgs[1].content).toMatch(/emby \[running\]/);
+    expect(sysMsgs[1].content).toMatch(/radarr \[running\]/);
+  });
+
+  test('omits snapshot block when opts.includeContext is false', async () => {
+    let captured;
+    global.fetch = jest.fn().mockImplementation((_url, init) => {
+      captured = JSON.parse(init.body);
+      return Promise.resolve(fakeStreamResponse(['data: [DONE]\n\n']));
+    });
+
+    // eslint-disable-next-line no-empty
+    for await (const _ of ai.streamChat(KEYED, [{ role: 'user', content: 'hi' }], { includeContext: false })) {}
+
+    expect(system.getStats).not.toHaveBeenCalled();
+    expect(captured.messages.filter(m => m.role === 'system').length).toBe(1);
+  });
+
+  test('degrades silently when snapshot collection fails', async () => {
+    system.getStats.mockRejectedValue(new Error('proc unreadable'));
+    docker.getContainers.mockRejectedValue(new Error('socket missing'));
+
+    let captured;
+    global.fetch = jest.fn().mockImplementation((_url, init) => {
+      captured = JSON.parse(init.body);
+      return Promise.resolve(fakeStreamResponse(['data: [DONE]\n\n']));
+    });
+
+    // eslint-disable-next-line no-empty
+    for await (const _ of ai.streamChat(KEYED, [{ role: 'user', content: 'hi' }], { includeContext: true })) {}
+
+    // Only the static SYSTEM_CHAT message — no snapshot block on failure.
+    expect(captured.messages.filter(m => m.role === 'system').length).toBe(1);
   });
 });
 

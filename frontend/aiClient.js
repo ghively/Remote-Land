@@ -37,7 +37,10 @@
     }
 
     return {
-      chat:        (messages, signal) => streamSSE('/api/ai/chat', { messages }, signal),
+      chat: (messages, signal, opts) => streamSSE('/api/ai/chat', {
+        messages,
+        ...((opts && typeof opts.includeContext === 'boolean') ? { includeContext: opts.includeContext } : {}),
+      }, signal),
       analyzeLogs: (lines, signal)    => streamSSE('/api/ai/analyze-logs', { lines }, signal),
       shell:       async (intent) => {
         const res = await fetch(`${base}/api/ai/shell`, {

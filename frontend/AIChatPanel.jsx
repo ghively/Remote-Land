@@ -4,6 +4,7 @@ function AIChatPanel() {
   const [messages, setMessages]   = useState([]);   // [{role, content, usage?, error?}]
   const [input, setInput]         = useState('');
   const [streaming, setStreaming] = useState(false);
+  const [includeContext, setIncludeContext] = useState(true);
   const abortRef = useRef(null);
   const listRef  = useRef(null);
 
@@ -44,7 +45,7 @@ function AIChatPanel() {
 
     try {
       // Chat history sent upstream excludes the empty placeholder we appended.
-      for await (const ev of ai.chat(next.slice(0, -1), ctrl.signal)) {
+      for await (const ev of ai.chat(next.slice(0, -1), ctrl.signal, { includeContext })) {
         if (ev.delta) {
           setMessages(m => {
             const last = m[m.length - 1];
@@ -86,6 +87,11 @@ function AIChatPanel() {
         <span style={{ color: 'var(--neon-cyan)', fontSize: '0.75rem', letterSpacing: 2,
                        textShadow: 'var(--bloom-cyan)' }}>[AI_CHAT]</span>
         <span style={{ flex: 1 }} />
+        <button className={`cmd-btn-sm${includeContext ? ' cyan' : ''}`}
+          title="Include a live system snapshot (CPU/RAM/disk/containers) with each message"
+          onClick={() => setIncludeContext(v => !v)}>
+          {includeContext ? '[CTX:ON]' : '[CTX:OFF]'}
+        </button>
         <button className="cmd-btn-sm" onClick={stop} disabled={!streaming}>[STOP]</button>
         <button className="cmd-btn-sm" onClick={clear} disabled={messages.length === 0}>[CLEAR]</button>
       </div>

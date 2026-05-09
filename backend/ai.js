@@ -4,12 +4,15 @@
    streaming, existing axios dep for non-streaming. */
 
 const axios = require('axios');
+const system = require('./system');
+const docker = require('./docker');
 
 const SYSTEM_CHAT = `You are the NAS Terminal AI assistant — a Linux server
 co-pilot. The user is running a self-hosted media server (Emby, Radarr, Sonarr,
 SABnzbd) inside Docker on a systemd-based distro. Default to terse, accurate
 answers. When suggesting commands, use code fences. Never invent file paths or
-service names; ask if unsure.`;
+service names; ask if unsure. A live system snapshot may be provided as a
+separate system message; when it's present, prefer it over guessing.`;
 
 const SYSTEM_SHELL = `You translate natural-language intents into safe shell
 commands for a Linux NAS. Respond with a JSON object matching this schema:
@@ -57,10 +60,53 @@ function isConfigured(config) {
   return !!(config.ai && (config.ai.apiKey || config.ai.baseUrl));
 }
 
-async function* streamChat(config, messages) {
+async function buildContextSnapshot() {
+  // Best-effort. Failures degrade silently — chat still works, just without
+  // live context.
+  const snapshot = {};
+  const [stats, containers] = await Promise.allSettled([
+    system.getStats(),
+    docker.getContainers(),
+  ]);
+  if (stats.status === 'fulfilled') snapshot.stats = stats.value;
+  if (containers.status === 'fulfilled') snapshot.containers = containers.value;
+  return snapshot;
+}
+
+function formatContextMessage(snapshot) {
+  if (!snapshot || (!snapshot.stats && !snapshot.containers)) return null;
+  const lines = ['<live-snapshot>'];
+  if (snapshot.stats) {
+    const s = snapshot.stats;
+    if (s.cpu)     lines.push(`CPU:     ${s.cpu.percent}%`);
+    if (s.ram)     lines.push(`RAM:     ${Math.round(100 * s.ram.used / s.ram.total)}% (${(s.ram.used / 1e9).toFixed(1)}/${(s.ram.total / 1e9).toFixed(1)} GB)`);
+    if (s.disk)    lines.push(`DISK /:  ${Math.round(100 * s.disk.used / s.disk.total)}% (${(s.disk.used / 1e9).toFixed(0)}/${(s.disk.total / 1e9).toFixed(0)} GB)`);
+    if (s.network) lines.push(`NETWORK: rx ${(s.network.rxBytesPerSec / 1024).toFixed(1)} kB/s, tx ${(s.network.txBytesPerSec / 1024).toFixed(1)} kB/s`);
+    if (s.uptime)  lines.push(`UPTIME:  ${s.uptime.formatted}`);
+    if (s.load)    lines.push(`LOAD:    ${s.load.one.toFixed(2)} ${s.load.five.toFixed(2)} ${s.load.fifteen.toFixed(2)}`);
+  }
+  if (snapshot.containers && snapshot.containers.length) {
+    lines.push(`CONTAINERS (${snapshot.containers.length}):`);
+    for (const c of snapshot.containers.slice(0, 32)) {
+      lines.push(`  - ${c.name} [${c.state}] ${c.image}`);
+    }
+  }
+  lines.push('</live-snapshot>');
+  return lines.join('\n');
+}
+
+async function* streamChat(config, messages, opts) {
+  const sysMessages = [{ role: 'system', content: SYSTEM_CHAT }];
+  if (opts && opts.includeContext) {
+    try {
+      const snapshot = await buildContextSnapshot();
+      const block = formatContextMessage(snapshot);
+      if (block) sysMessages.push({ role: 'system', content: block });
+    } catch (_) { /* context optional */ }
+  }
   yield* streamCompletions(config, {
     model:    (config.ai && config.ai.chatModel) || 'gpt-4o-mini',
-    messages: [{ role: 'system', content: SYSTEM_CHAT }, ...messages],
+    messages: [...sysMessages, ...messages],
     stream:   true,
   });
 }
