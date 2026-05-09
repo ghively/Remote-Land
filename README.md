@@ -1,22 +1,39 @@
-# CODING AGENTS: READ THIS FIRST
+# NAS Terminal
 
-This is a **handoff bundle** from Claude Design (claude.ai/design).
+Cyber-noir Linux server management UI. A tiling window manager interface for managing a remote Linux server — CRT phosphor green, deep violet accents, Hyprland-style dwindle layout.
 
-A user mocked up designs in HTML/CSS/JS using an AI design tool, then exported this bundle so a coding agent can implement the designs for real.
+## Running the UI
 
-## What you should do — IMPORTANT
+No install. No build. Just open the file:
 
-**Read `test-design-system/project/NAS Terminal.html` in full.** The user had this file open when they triggered the handoff, so it's almost certainly the primary design they want built. Read it top to bottom — don't skim. Then **follow its imports**: open every file it pulls in (shared components, CSS, scripts) so you understand how the pieces fit together before you start implementing.
+```
+frontend/NAS Terminal.html
+```
 
-**If anything is ambiguous, ask the user to confirm before you start implementing.** It's much cheaper to clarify scope up front than to build the wrong thing.
+Double-click it or drag it into Chrome, Firefox, or Edge. The boot sequence plays, then you hit the login screen (default creds: `root` / `root`).
 
-## About the design files
+## Project structure
 
-The design medium is **HTML/CSS/JS** — these are prototypes, not production code. Your job is to **recreate them pixel-perfectly** in whatever technology makes sense for the target codebase (React, Vue, native, whatever fits). Match the visual output; don't copy the prototype's internal structure unless it happens to fit.
+```
+frontend/     Browser UI — CDN React 18 + Babel prototype
+backend/      Linux server agent (Sub-project 2, not yet built)
+docs/         Design specs and implementation plans
+CLAUDE.md     AI agent rulebook — read this before editing code
+```
 
-**Don't render these files in a browser or take screenshots unless the user asks you to.** Everything you need — dimensions, colors, layout rules — is spelled out in the source. Read the HTML and CSS directly; a screenshot won't tell you anything they don't.
+## Design system
 
-## Bundle contents
+All tokens (colors, fonts, spacing, motion) are in `frontend/colors_and_type.css`. See `CLAUDE.md` for the full rules.
 
-- `test-design-system/README.md` — this file
-- `test-design-system/project/` — the `Test Design system` project files (HTML prototypes, assets, components)
+## Roadmap
+
+| # | Sub-project | Status |
+|---|-------------|--------|
+| 1 | Project Foundation | ✅ Complete |
+| 2 | Backend Server Agent — system stats, terminal WebSocket, Docker, media APIs | Planned |
+| 3 | Frontend / Backend Wiring — replace mock data with live endpoints | Planned |
+| 4 | AI Features — chat panel, command suggestions, log analyzer, NL→shell | Planned |
+
+## For AI agents
+
+Read `CLAUDE.md` first. It covers the full design system, component map, and all coding constraints.
