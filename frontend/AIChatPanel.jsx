@@ -1,10 +1,14 @@
 /* AIChatPanel.jsx — Streaming AI chat. Uses BackendContext.ai. */
 function AIChatPanel() {
   const { ai, isDemo, aiEnabled } = useBackend();
-  const [messages, setMessages]   = useState([]);   // [{role, content, usage?, error?}]
+  // messages: [{role:'user'|'assistant', content, usage?, error?}]
+  // toolEvents: chronological [{kind:'start'|'result', id, name, ok?, args?}]
+  const [messages, setMessages]   = useState([]);
+  const [toolEvents, setToolEvents] = useState([]);
   const [input, setInput]         = useState('');
   const [streaming, setStreaming] = useState(false);
   const [includeContext, setIncludeContext] = useState(true);
+  const [useTools, setUseTools]             = useState(true);
   const abortRef = useRef(null);
   const listRef  = useRef(null);
 
@@ -45,12 +49,26 @@ function AIChatPanel() {
 
     try {
       // Chat history sent upstream excludes the empty placeholder we appended.
-      for await (const ev of ai.chat(next.slice(0, -1), ctrl.signal, { includeContext })) {
+      for await (const ev of ai.chat(next.slice(0, -1), ctrl.signal, { includeContext, useTools })) {
         if (ev.delta) {
           setMessages(m => {
             const last = m[m.length - 1];
             return [...m.slice(0, -1), { ...last, content: last.content + ev.delta }];
           });
+        } else if (ev.tool_call_start) {
+          setToolEvents(t => [...t, {
+            kind: 'start',
+            id:   ev.tool_call_start.id,
+            name: ev.tool_call_start.name,
+            args: ev.tool_call_start.arguments,
+          }]);
+        } else if (ev.tool_call_result) {
+          setToolEvents(t => [...t, {
+            kind: 'result',
+            id:   ev.tool_call_result.id,
+            name: ev.tool_call_result.name,
+            ok:   ev.tool_call_result.ok,
+          }]);
         } else if (ev.error) {
           setMessages(m => {
             const last = m[m.length - 1];
@@ -77,7 +95,7 @@ function AIChatPanel() {
   };
 
   const stop  = () => { if (abortRef.current) abortRef.current.abort(); };
-  const clear = () => { stop(); setMessages([]); };
+  const clear = () => { stop(); setMessages([]); setToolEvents([]); };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
@@ -91,6 +109,11 @@ function AIChatPanel() {
           title="Include a live system snapshot (CPU/RAM/disk/containers) with each message"
           onClick={() => setIncludeContext(v => !v)}>
           {includeContext ? '[CTX:ON]' : '[CTX:OFF]'}
+        </button>
+        <button className={`cmd-btn-sm${useTools ? ' cyan' : ''}`}
+          title="Allow the model to call read-only tools (system stats, container list, logs, media status)"
+          onClick={() => setUseTools(v => !v)}>
+          {useTools ? '[TOOLS:ON]' : '[TOOLS:OFF]'}
         </button>
         <button className="cmd-btn-sm" onClick={stop} disabled={!streaming}>[STOP]</button>
         <button className="cmd-btn-sm" onClick={clear} disabled={messages.length === 0}>[CLEAR]</button>
@@ -126,6 +149,27 @@ function AIChatPanel() {
         ))}
       </div>
 
+      {toolEvents.length > 0 && (
+        <div style={{ borderTop: '1px solid rgba(0,255,0,0.1)', padding: '6px 10px',
+                      background: 'rgba(0,0,0,0.4)', maxHeight: 96, overflowY: 'auto',
+                      fontSize: '0.7rem', fontFamily: 'var(--font-mono)',
+                      scrollbarWidth: 'thin', scrollbarColor: 'rgba(0,255,0,0.3) transparent' }}>
+          {toolEvents.slice(-8).map((ev, i) => (
+            <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+              <span style={{ color: ev.kind === 'start' ? 'var(--neon-cyan)'
+                              : ev.ok === false ? '#ff5f56' : 'var(--neon-green)',
+                             letterSpacing: 1 }}>
+                {ev.kind === 'start' ? '→ tool' : (ev.ok === false ? '✗ tool' : '← tool')}
+              </span>
+              <span style={{ color: 'var(--text-primary)' }}>{ev.name}</span>
+              {ev.kind === 'start' && ev.args && ev.args !== '{}' && (
+                <span style={{ color: 'var(--text-dim)', overflow: 'hidden', textOverflow: 'ellipsis',
+                               whiteSpace: 'nowrap', flex: 1 }}>{ev.args}</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 6, padding: 8,
                     borderTop: '1px solid rgba(0,255,0,0.1)', flexShrink: 0 }}>
         <input className="logview-filter" style={{ flex: 1 }}
