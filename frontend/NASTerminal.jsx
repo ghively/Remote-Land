@@ -571,6 +571,22 @@ function WMDesktop({ user, host, onLogout }) {
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, [spawnWindow]);
+
+  // Bridge launcher's [INSERT INTO TERMINAL] → most-recent live PTY.
+  useEffect(() => {
+    const onInsert = (e) => {
+      const sinks = window.__nasTerminalSinks;
+      if (!sinks || sinks.size === 0) {
+        notify('> NO ACTIVE TERMINAL — OPEN ONE FIRST', 'warn');
+        return;
+      }
+      const sink = Array.from(sinks).pop();
+      sink(e.detail);
+      notify('> COMMAND INSERTED — PRESS ENTER TO RUN', 'ok');
+    };
+    window.addEventListener('nas:insert-into-terminal', onInsert);
+    return () => window.removeEventListener('nas:insert-into-terminal', onInsert);
+  }, [notify]);
   const visibleWindows = windows.filter(w => !w.minimized);
   const wsEl = workspaceRef.current;
   const wsW = wsEl ? wsEl.clientWidth : window.innerWidth;
