@@ -89,64 +89,85 @@ function ProgressBar({ pct, color = 'green' }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// API CONFIG PANEL
+// BACKEND CONFIG PANEL
+// Replaces the legacy per-service key editor. Per-service keys (Radarr,
+// Sonarr, etc.) now live in backend/config.json on the server, never in
+// the browser. This panel only configures how the browser reaches the
+// NAS Terminal backend agent itself.
 // ══════════════════════════════════════════════════════════════════════════════
 function ApiConfigPanel({ onSave }) {
-  const [cfg, setCfg] = useState(loadConfig);
+  const ctx = window.useBackend ? window.useBackend() : { host: 'nas.local', apiKey: '__demo__' };
+  const [host, setHost]     = useState(ctx.host || 'nas.local');
+  const [apiKey, setApiKey] = useState(ctx.apiKey === '__demo__' ? '' : (ctx.apiKey || ''));
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState(null);
 
-  const update = (svc, field, val) => setCfg(c => ({ ...c, [svc]: { ...c[svc], [field]: val } }));
-
-  const save = () => {
-    saveConfig(cfg);
-    onSave && onSave(cfg);
+  const test = async () => {
+    setTesting(true); setTestResult(null);
+    try {
+      const api = window.makeApi(host, apiKey || '__demo__');
+      await api.health();
+      if (apiKey) await api.systemStats();
+      setTestResult({ ok: true, msg: apiKey ? '> CONNECTION OK — KEY ACCEPTED' : '> BACKEND REACHABLE (no key — would enter demo mode)' });
+    } catch (err) {
+      const msg = /HTTP 401/.test(err.message) ? 'INVALID API KEY' : err.message.toUpperCase();
+      setTestResult({ ok: false, msg: `> CONNECTION FAILED: ${msg}` });
+    }
+    setTesting(false);
   };
 
-  const services = [
-    { id: 'radarr',  label: 'RADARR',  port: 7878, doc: 'Settings → General → API Key' },
-    { id: 'sonarr',  label: 'SONARR',  port: 8989, doc: 'Settings → General → API Key' },
-    { id: 'sabnzbd', label: 'SABNZBD', port: 8080, doc: 'Config → General → API Key' },
-  ];
+  const save = () => {
+    const auth = JSON.parse(sessionStorage.getItem('nas_auth') || '{}');
+    sessionStorage.setItem('nas_auth', JSON.stringify({
+      ...auth, host, apiKey: apiKey || '__demo__',
+    }));
+    onSave && onSave();
+    location.reload();
+  };
 
   return (
-    <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 20, overflowY: 'auto', height: '100%', scrollbarWidth: 'thin', scrollbarColor: 'rgba(0,255,0,0.3) transparent' }}>
+    <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto', height: '100%', scrollbarWidth: 'thin', scrollbarColor: 'rgba(0,255,0,0.3) transparent' }}>
       <div style={{ color: 'var(--neon-cyan)', fontSize: '0.85rem', letterSpacing: 2, textShadow: 'var(--bloom-cyan)', borderBottom: '2px solid var(--neon-purple)', paddingBottom: 8 }}>
-        API_CONFIGURATION
+        BACKEND_CONFIGURATION
       </div>
       <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', lineHeight: 1.8 }}>
-        &gt; Enter your NAS host URLs and API keys below.<br/>
-        &gt; Keys are stored in browser localStorage only.<br/>
-        &gt; Leave blank to use demo/mock data.
+        &gt; Host of the NAS Terminal backend agent (port 3001).<br/>
+        &gt; API key matches `apiKey` in backend/config.json on the server.<br/>
+        &gt; Per-service keys (Radarr, Sonarr, Emby) live on the backend now.<br/>
+        &gt; Leave API key blank to switch to demo mode.
       </div>
 
-      {services.map(svc => (
-        <div key={svc.id} style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,255,0,0.15)', borderRadius: 4, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ color: 'var(--neon-green)', fontSize: '0.8rem', letterSpacing: 2, fontWeight: 'bold', textShadow: 'var(--glow-green-sm)' }}>
-            [{svc.label}] — :{svc.port}
-          </div>
-          <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)' }}>&gt; Find key: {svc.doc}</div>
-          <div>
-            <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', letterSpacing: 1, marginBottom: 4 }}>BASE URL</div>
-            <input className="logview-filter" style={{ width: '100%' }}
-              placeholder={`http://nas.local:${svc.port}`}
-              value={cfg[svc.id].url}
-              onChange={e => update(svc.id, 'url', e.target.value)}
-            />
-          </div>
-          <div>
-            <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', letterSpacing: 1, marginBottom: 4 }}>API KEY</div>
-            <input className="logview-filter" style={{ width: '100%' }}
-              placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-              value={cfg[svc.id].apiKey}
-              onChange={e => update(svc.id, 'apiKey', e.target.value)}
-              type="password"
-            />
-          </div>
+      <div style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,255,0,0.15)', borderRadius: 4, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ color: 'var(--neon-green)', fontSize: '0.8rem', letterSpacing: 2, fontWeight: 'bold', textShadow: 'var(--glow-green-sm)' }}>
+          [BACKEND_AGENT]
         </div>
-      ))}
+        <div>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', letterSpacing: 1, marginBottom: 4 }}>HOST</div>
+          <input className="logview-filter" style={{ width: '100%' }}
+            value={host} onChange={e => setHost(e.target.value)} placeholder="nas.local" />
+        </div>
+        <div>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', letterSpacing: 1, marginBottom: 4 }}>API_KEY</div>
+          <input className="logview-filter" style={{ width: '100%' }} type="password"
+            value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="leave blank for demo" />
+        </div>
+      </div>
 
-      <button className="cmd-btn" style={{ width: '100%', textAlign: 'center', letterSpacing: 2 }} onClick={save}>
-        [ SAVE_CONFIG ]
-      </button>
+      {testResult && (
+        <div style={{ fontSize: '0.72rem', color: testResult.ok ? 'var(--neon-green)' : '#ff5f56',
+                      textShadow: testResult.ok ? 'var(--glow-green-sm)' : '0 0 4px #ff5f56', letterSpacing: 1 }}>
+          {testResult.msg}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button className="cmd-btn" style={{ flex: 1, textAlign: 'center', letterSpacing: 2 }} onClick={test} disabled={testing}>
+          {testing ? '[ TESTING... ]' : '[ TEST_CONNECTION ]'}
+        </button>
+        <button className="cmd-btn" style={{ flex: 1, textAlign: 'center', letterSpacing: 2 }} onClick={save}>
+          [ SAVE_AND_RECONNECT ]
+        </button>
+      </div>
     </div>
   );
 }
@@ -201,315 +222,122 @@ const MOCK_SAB_QUEUE = {
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
-// RADARR PANEL
+// MEDIA SUMMARY CARD — shared between Radarr / Sonarr / Emby in v1.
+// Backend's /api/media/* endpoints return summary fields only (queueSize +
+// upcoming for Radarr/Sonarr; activeSessions/serverName/version for Emby).
+// Full lists are flagged DEEP DATA and deferred to backend v2.
 // ══════════════════════════════════════════════════════════════════════════════
-function RadarrPanel({ onOpenWebUI }) {
-  const [cfg] = useState(loadConfig);
-  const hasKey = !!cfg.radarr.apiKey;
-  const [tab, setTab] = useState('movies'); // movies | queue | search
-  const [movies, setMovies] = useState([]);
-  const [queue, setQueue]   = useState([]);
-  const [search, setSearch] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
-  const [searching, setSearching] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError]   = useState(null);
-  const [showCfg, setShowCfg] = useState(false);
-  const [filter, setFilter] = useState('all');
+function MediaSummaryCard({ service, accent, fetcher, demoData, fields, onOpenWebUI }) {
+  const { isDemo, status } = window.useBackend ? window.useBackend() : { isDemo: true, status: 'demo' };
+  const [data, setData]       = useState(isDemo ? demoData : null);
+  const [offline, setOffline] = useState(false);
+  const [error, setError]     = useState(null);
 
-  const load = useCallback(async () => {
-    setLoading(true); setError(null);
-    try {
-      if (hasKey) {
-        const [mv, q] = await Promise.all([
-          apiFetch(cfg.radarr.url, 'movie', cfg.radarr.apiKey),
-          apiFetch(cfg.radarr.url, 'queue', cfg.radarr.apiKey),
-        ]);
-        setMovies(mv);
-        setQueue(q.records || q);
-      } else {
-        await new Promise(r => setTimeout(r, 400));
-        setMovies(MOCK_MOVIES);
-        setQueue(MOCK_RADARR_QUEUE);
-      }
-    } catch(e) {
-      setError(e.message);
-      setMovies(MOCK_MOVIES);
-      setQueue(MOCK_RADARR_QUEUE);
-    }
-    setLoading(false);
-  }, [hasKey, cfg]);
-
-  useEffect(() => { load(); }, [load]);
-
-  const doSearch = async () => {
-    if (!search.trim()) return;
-    setSearching(true);
-    try {
-      if (hasKey) {
-        const r = await apiFetch(cfg.radarr.url, 'movie/lookup', cfg.radarr.apiKey, { term: search });
-        setSearchResults(r.slice(0, 12));
-      } else {
-        await new Promise(r => setTimeout(r, 500));
-        setSearchResults([
-          { tmdbId: 1001, title: 'Alien: Romulus', year: 2024, status: 'released', overview: 'A new chapter in the Alien franchise.', genres: ['Horror','Sci-Fi'] },
-          { tmdbId: 1002, title: 'Deadpool & Wolverine', year: 2024, status: 'released', overview: 'Wade Wilson teams up with Wolverine.', genres: ['Action','Comedy'] },
-          { tmdbId: 1003, title: 'Twisters', year: 2024, status: 'released', overview: 'Storm chasers face deadly tornadoes.', genres: ['Action','Thriller'] },
-        ]);
-      }
-    } catch(e) { setSearchResults([]); }
-    setSearching(false);
-  };
-
-  const fmt = (bytes) => {
-    if (!bytes) return '0 B';
-    const gb = bytes / 1e9;
-    return gb >= 1 ? `${gb.toFixed(1)} GB` : `${(bytes / 1e6).toFixed(0)} MB`;
-  };
-
-  const filteredMovies = movies.filter(m => {
-    const matchText = !search || m.title.toLowerCase().includes(search.toLowerCase());
-    const matchFilter = filter === 'all' || (filter === 'missing' && !m.hasFile) || (filter === 'downloaded' && m.hasFile);
-    return matchText && matchFilter;
-  });
-
-  if (showCfg) return <ApiConfigPanel onSave={() => { setShowCfg(false); load(); }} />;
+  useEffect(() => {
+    if (isDemo) { setData(demoData); setOffline(false); return; }
+    if (status !== 'online') return;
+    let alive = true;
+    const tick = async () => {
+      try {
+        const d = await fetcher();
+        if (!alive) return;
+        if (d && d.status === 'offline') { setOffline(true); setData(null); setError(null); }
+        else { setData(d); setOffline(false); setError(null); }
+      } catch (err) { if (alive) { setError(err.message); setOffline(true); } }
+    };
+    tick();
+    const iv = setInterval(tick, 30000);
+    return () => { alive = false; clearInterval(iv); };
+  }, [isDemo, status, fetcher, demoData]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      {/* Toolbar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderBottom: '1px solid rgba(0,255,0,0.1)', background: 'rgba(0,0,0,0.5)', flexShrink: 0, flexWrap: 'wrap' }}>
-        <span style={{ color: 'var(--neon-green)', fontSize: '0.75rem', fontWeight: 'bold', letterSpacing: 2, textShadow: 'var(--glow-green-sm)', marginRight: 4 }}>[RADARR]</span>
-        {['movies','queue','search'].map(t => (
-          <Btn key={t} label={`[${t.toUpperCase()}${t==='movies'?` (${movies.length})`:t==='queue'?` (${queue.length})`:''}]`} cls={tab===t?'cyan':''} onClick={() => setTab(t)} />
-        ))}
-        <div style={{ flex: 1 }} />
-        {error && <StatusPill text="API ERR — DEMO" color="yellow" />}
-        {!hasKey && <StatusPill text="DEMO MODE" color="dim" />}
-        <Btn label="[REFRESH]" onClick={load} disabled={loading} />
-        <Btn label="[WEB UI]" cls="cyan" onClick={onOpenWebUI} />
-        <Btn label="[CONFIG]" onClick={() => setShowCfg(true)} />
+    <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14, height: '100%', overflow: 'auto' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, borderBottom: '2px solid var(--neon-purple)', paddingBottom: 8 }}>
+        <span style={{ color: accent, fontSize: '0.95rem', letterSpacing: 3, fontWeight: 'bold', textShadow: `0 0 6px ${accent}` }}>
+          [{service.toUpperCase()}_SUMMARY]
+        </span>
+        <span style={{ flex: 1 }} />
+        {isDemo && <StatusPill text="DEMO MODE" color="dim" />}
+        {!isDemo && offline && <StatusPill text={`${service.toUpperCase()} OFFLINE`} color="red" />}
+        {!isDemo && !offline && data && <StatusPill text="ONLINE" color="green" />}
       </div>
 
-      {/* Movies tab */}
-      {tab === 'movies' && (
-        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-          <div style={{ display: 'flex', gap: 6, padding: '5px 10px', borderBottom: '1px solid rgba(0,255,0,0.08)', flexShrink: 0, flexWrap: 'wrap' }}>
-            <input className="logview-filter" style={{ flex: 1, minWidth: 140 }} placeholder="$ filter --movies" value={search} onChange={e => setSearch(e.target.value)} />
-            {['all','downloaded','missing'].map(f => (
-              <Btn key={f} label={`[${f.toUpperCase()}]`} cls={filter===f?'cyan':''} onClick={() => setFilter(f)} />
-            ))}
-          </div>
-          <div style={{ flex: 1, overflowY: 'auto', scrollbarWidth: 'thin', scrollbarColor: 'rgba(0,255,0,0.3) transparent' }}>
-            {loading ? <div style={{ padding: 20, color: 'var(--text-dim)', textAlign: 'center', fontSize: '0.8rem' }}>&gt; LOADING MOVIE DATABASE...</div> : filteredMovies.map(m => (
-              <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 12px', borderBottom: '1px solid rgba(0,255,0,0.05)', transition: 'background 0.1s' }}
-                onMouseEnter={e => e.currentTarget.style.background='rgba(0,255,0,0.04)'}
-                onMouseLeave={e => e.currentTarget.style.background='transparent'}>
-                <span style={{ color: m.hasFile ? '#27c93f' : '#ff5f56', fontSize: '0.75rem', width: 10, flexShrink: 0 }}>●</span>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ color: 'var(--text-primary)', fontSize: '0.82rem', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.title}</div>
-                  <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <span>{m.year}</span>
-                    {m.ratings?.imdb && <span>IMDB: {m.ratings.imdb.value}</span>}
-                    {m.genres?.slice(0,2).map(g => <span key={g} style={{ color: 'var(--neon-purple)' }}>[{g}]</span>)}
-                  </div>
-                </div>
-                <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)', flexShrink: 0 }}>{fmt(m.sizeOnDisk)}</span>
-                <StatusPill text={m.hasFile ? 'DOWNLOADED' : 'MISSING'} color={m.hasFile ? 'green' : 'red'} />
-                {!m.hasFile && <Btn label="[SEARCH]" cls="cyan" onClick={() => { setTab('search'); setSearch(m.title); }} />}
-              </div>
-            ))}
-          </div>
+      {error && !offline && (
+        <div style={{ fontSize: '0.72rem', color: '#ffbd2e', textShadow: '0 0 4px #ffbd2e' }}>
+          &gt; ERR: {error}
         </div>
       )}
 
-      {/* Queue tab */}
-      {tab === 'queue' && (
-        <div style={{ flex: 1, overflowY: 'auto', padding: 10, scrollbarWidth: 'thin', scrollbarColor: 'rgba(0,255,0,0.3) transparent' }}>
-          {loading ? <div style={{ padding: 20, color: 'var(--text-dim)', fontSize: '0.8rem' }}>&gt; LOADING QUEUE...</div> :
-           queue.length === 0 ? <div style={{ padding: 20, color: 'var(--text-dim)', fontSize: '0.8rem' }}>&gt; QUEUE IS EMPTY</div> :
-           queue.map(item => {
-             const pct = item.size > 0 ? ((item.size - item.sizeleft) / item.size) * 100 : 0;
-             return (
-               <div key={item.id} style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,255,0,0.15)', borderRadius: 4, padding: '10px 12px', marginBottom: 8 }}>
-                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-                   <div style={{ flex: 1, minWidth: 0 }}>
-                     <div style={{ color: 'var(--neon-green)', fontSize: '0.82rem', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textShadow: 'var(--glow-green-sm)' }}>{item.title}</div>
-                     <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)', display: 'flex', gap: 10, marginTop: 2 }}>
-                       <span>{item.quality?.quality?.name || 'Unknown'}</span>
-                       <span style={{ color: 'var(--neon-purple)' }}>{item.protocol?.toUpperCase()}</span>
-                       <span>ETA: {item.timeleft}</span>
-                     </div>
-                   </div>
-                   <StatusPill text={item.status?.toUpperCase()} color={item.status==='downloading'?'cyan':item.status==='queued'?'yellow':'dim'} />
-                 </div>
-                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                   <ProgressBar pct={pct} color={item.status==='downloading'?'cyan':'dim'} />
-                   <span style={{ fontSize: '0.7rem', color: 'var(--neon-cyan)', width: 36, textAlign: 'right', flexShrink: 0 }}>{pct.toFixed(0)}%</span>
-                 </div>
-                 <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)', marginTop: 4 }}>
-                   {fmt(item.size - item.sizeleft)} / {fmt(item.size)}
-                 </div>
-               </div>
-             );
-           })}
-        </div>
-      )}
-
-      {/* Search tab */}
-      {tab === 'search' && (
-        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-          <div style={{ display: 'flex', gap: 6, padding: '8px 10px', borderBottom: '1px solid rgba(0,255,0,0.08)', flexShrink: 0 }}>
-            <input className="logview-filter" style={{ flex: 1 }} placeholder="$ movie-lookup --title ..."
-              value={search} onChange={e => setSearch(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && doSearch()} />
-            <Btn label={searching ? '[SEARCHING...]' : '[LOOKUP]'} cls="cyan" onClick={doSearch} disabled={searching} />
-          </div>
-          <div style={{ flex: 1, overflowY: 'auto', padding: 10, scrollbarWidth: 'thin', scrollbarColor: 'rgba(0,255,0,0.3) transparent' }}>
-            {searchResults.map((r, i) => (
-              <div key={i} style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,255,0,0.15)', borderRadius: 4, padding: '10px 12px', marginBottom: 8, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ color: 'var(--neon-green)', fontSize: '0.85rem', fontWeight: 'bold', textShadow: 'var(--glow-green-sm)' }}>{r.title} ({r.year})</div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginTop: 4, lineHeight: 1.6 }}>{r.overview?.slice(0, 120)}{r.overview?.length > 120 ? '…' : ''}</div>
-                  <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
-                    {r.genres?.slice(0,3).map(g => <span key={g} style={{ fontSize: '0.65rem', color: 'var(--neon-purple)', border: '1px solid rgba(128,0,255,0.3)', borderRadius: 2, padding: '1px 5px' }}>[{g}]</span>)}
-                  </div>
-                </div>
-                <Btn label="[+ ADD]" cls="cyan" onClick={() => {}} />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        {fields.map(({ label, key, format }) => {
+          const raw = data && data[key];
+          const display = data == null ? '--' : (format ? format(raw) : (raw == null ? '--' : raw));
+          return (
+            <div key={label} style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,255,0,0.15)', borderRadius: 4, padding: '12px 14px' }}>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', letterSpacing: 2, marginBottom: 6 }}>{label}</div>
+              <div style={{ fontSize: '1.4rem', color: accent, textShadow: `0 0 6px ${accent}`, letterSpacing: 1 }}>
+                {display}
               </div>
-            ))}
-            {searchResults.length === 0 && !searching && <div style={{ padding: 20, color: 'var(--text-dim)', fontSize: '0.8rem', textAlign: 'center' }}>&gt; ENTER TITLE AND PRESS [LOOKUP]</div>}
-          </div>
-        </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', lineHeight: 1.7, padding: '10px 12px',
+                    border: '1px dashed rgba(0,255,0,0.2)', borderRadius: 4 }}>
+        &gt; [ DEEP DATA — REQUIRES BACKEND v2 ]<br/>
+        &gt; Full {service} lists (movies / episodes / queue items) are not exposed by the<br/>
+        &gt; current backend. Use the upstream web UI for full management.
+      </div>
+
+      {onOpenWebUI && (
+        <button className="cmd-btn" style={{ width: '100%', textAlign: 'center', letterSpacing: 2 }} onClick={onOpenWebUI}>
+          [ OPEN {service.toUpperCase()} WEB UI ]
+        </button>
       )}
     </div>
   );
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// SONARR PANEL
+// RADARR PANEL — backend summary
+// ══════════════════════════════════════════════════════════════════════════════
+function RadarrPanel({ onOpenWebUI }) {
+  const ctx = window.useBackend ? window.useBackend() : { api: null };
+  const fetcher = useCallback(() => ctx.api ? ctx.api.radarr() : Promise.resolve({ status: 'offline' }), [ctx.api]);
+  return (
+    <MediaSummaryCard
+      service="Radarr"
+      accent="var(--neon-green)"
+      fetcher={fetcher}
+      demoData={{ queueSize: 3, upcoming: 5 }}
+      fields={[
+        { label: 'QUEUE',         key: 'queueSize' },
+        { label: 'UPCOMING (7d)', key: 'upcoming'  },
+      ]}
+      onOpenWebUI={onOpenWebUI}
+    />
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SONARR PANEL — backend summary
 // ══════════════════════════════════════════════════════════════════════════════
 function SonarrPanel({ onOpenWebUI }) {
-  const [cfg] = useState(loadConfig);
-  const hasKey = !!cfg.sonarr.apiKey;
-  const [tab, setTab] = useState('series');
-  const [series, setSeries] = useState([]);
-  const [queue, setQueue]   = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError]   = useState(null);
-  const [showCfg, setShowCfg] = useState(false);
-  const [search, setSearch] = useState('');
-
-  const load = useCallback(async () => {
-    setLoading(true); setError(null);
-    try {
-      if (hasKey) {
-        const [sv, q] = await Promise.all([
-          apiFetch(cfg.sonarr.url, 'series', cfg.sonarr.apiKey),
-          apiFetch(cfg.sonarr.url, 'queue', cfg.sonarr.apiKey),
-        ]);
-        setSeries(sv);
-        setQueue(q.records || q);
-      } else {
-        await new Promise(r => setTimeout(r, 350));
-        setSeries(MOCK_SERIES);
-        setQueue(MOCK_SONARR_QUEUE);
-      }
-    } catch(e) {
-      setError(e.message);
-      setSeries(MOCK_SERIES);
-      setQueue(MOCK_SONARR_QUEUE);
-    }
-    setLoading(false);
-  }, [hasKey, cfg]);
-
-  useEffect(() => { load(); }, [load]);
-
-  const filteredSeries = series.filter(s => !search || s.title.toLowerCase().includes(search.toLowerCase()));
-
-  if (showCfg) return <ApiConfigPanel onSave={() => { setShowCfg(false); load(); }} />;
-
+  const ctx = window.useBackend ? window.useBackend() : { api: null };
+  const fetcher = useCallback(() => ctx.api ? ctx.api.sonarr() : Promise.resolve({ status: 'offline' }), [ctx.api]);
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderBottom: '1px solid rgba(0,255,0,0.1)', background: 'rgba(0,0,0,0.5)', flexShrink: 0, flexWrap: 'wrap' }}>
-        <span style={{ color: 'var(--neon-cyan)', fontSize: '0.75rem', fontWeight: 'bold', letterSpacing: 2, textShadow: 'var(--bloom-cyan)', marginRight: 4 }}>[SONARR]</span>
-        {['series','queue'].map(t => (
-          <Btn key={t} label={`[${t.toUpperCase()}${t==='series'?` (${series.length})`:` (${queue.length})`}]`} cls={tab===t?'cyan':''} onClick={() => setTab(t)} />
-        ))}
-        <div style={{ flex: 1 }} />
-        {error && <StatusPill text="API ERR — DEMO" color="yellow" />}
-        {!hasKey && <StatusPill text="DEMO MODE" color="dim" />}
-        <Btn label="[REFRESH]" onClick={load} disabled={loading} />
-        <Btn label="[WEB UI]" cls="cyan" onClick={onOpenWebUI} />
-        <Btn label="[CONFIG]" onClick={() => setShowCfg(true)} />
-      </div>
-
-      {tab === 'series' && (
-        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-          <div style={{ padding: '5px 10px', borderBottom: '1px solid rgba(0,255,0,0.08)', flexShrink: 0 }}>
-            <input className="logview-filter" style={{ width: '100%' }} placeholder="$ filter --series" value={search} onChange={e => setSearch(e.target.value)} />
-          </div>
-          <div style={{ flex: 1, overflowY: 'auto', scrollbarWidth: 'thin', scrollbarColor: 'rgba(0,255,0,0.3) transparent' }}>
-            {loading ? <div style={{ padding: 20, color: 'var(--text-dim)', fontSize: '0.8rem' }}>&gt; LOADING SERIES DATABASE...</div> : filteredSeries.map(s => {
-              const pct = s.episodeCount > 0 ? (s.episodeFileCount / s.episodeCount) * 100 : 0;
-              const complete = s.episodeFileCount >= s.episodeCount;
-              return (
-                <div key={s.id} style={{ padding: '7px 12px', borderBottom: '1px solid rgba(0,255,0,0.05)', transition: 'background 0.1s' }}
-                  onMouseEnter={e => e.currentTarget.style.background='rgba(0,255,0,0.04)'}
-                  onMouseLeave={e => e.currentTarget.style.background='transparent'}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-                    <span style={{ color: complete ? '#27c93f' : '#ffbd2e', fontSize: '0.75rem', width: 10, flexShrink: 0 }}>●</span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ color: 'var(--text-primary)', fontSize: '0.82rem', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title}</div>
-                      <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)', display: 'flex', gap: 8 }}>
-                        <span>{s.year}</span>
-                        <span style={{ color: 'var(--neon-purple)' }}>{s.network}</span>
-                        <span>{s.episodeFileCount}/{s.episodeCount} eps</span>
-                        {s.genres?.slice(0,2).map(g => <span key={g}>[{g}]</span>)}
-                      </div>
-                    </div>
-                    <StatusPill text={s.status?.toUpperCase()} color={s.status==='continuing'?'cyan':'dim'} />
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 20 }}>
-                    <ProgressBar pct={pct} color={complete ? 'green' : 'yellow'} />
-                    <span style={{ fontSize: '0.68rem', color: complete ? '#27c93f' : '#ffbd2e', width: 36, textAlign: 'right', flexShrink: 0 }}>{pct.toFixed(0)}%</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {tab === 'queue' && (
-        <div style={{ flex: 1, overflowY: 'auto', padding: 10, scrollbarWidth: 'thin', scrollbarColor: 'rgba(0,255,0,0.3) transparent' }}>
-          {loading ? <div style={{ padding: 20, color: 'var(--text-dim)', fontSize: '0.8rem' }}>&gt; LOADING QUEUE...</div> :
-           queue.length === 0 ? <div style={{ padding: 20, color: 'var(--text-dim)', fontSize: '0.8rem' }}>&gt; QUEUE IS EMPTY</div> :
-           queue.map(item => {
-             const pct = item.size > 0 ? ((item.size - item.sizeleft) / item.size) * 100 : 0;
-             return (
-               <div key={item.id} style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,255,0,0.15)', borderRadius: 4, padding: '10px 12px', marginBottom: 8 }}>
-                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-                   <div style={{ flex: 1, minWidth: 0 }}>
-                     <div style={{ color: 'var(--neon-cyan)', fontSize: '0.82rem', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textShadow: 'var(--bloom-cyan)' }}>{item.title}</div>
-                     <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)', display: 'flex', gap: 10, marginTop: 2 }}>
-                       <span>{item.quality?.quality?.name || 'Unknown'}</span>
-                       <span style={{ color: 'var(--neon-purple)' }}>{item.protocol?.toUpperCase()}</span>
-                       <span>ETA: {item.timeleft}</span>
-                     </div>
-                   </div>
-                   <StatusPill text={item.status?.toUpperCase()} color={item.status==='downloading'?'cyan':'yellow'} />
-                 </div>
-                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                   <ProgressBar pct={pct} color="cyan" />
-                   <span style={{ fontSize: '0.7rem', color: 'var(--neon-cyan)', width: 36, textAlign: 'right', flexShrink: 0 }}>{pct.toFixed(0)}%</span>
-                 </div>
-               </div>
-             );
-           })}
-        </div>
-      )}
-    </div>
+    <MediaSummaryCard
+      service="Sonarr"
+      accent="var(--neon-cyan)"
+      fetcher={fetcher}
+      demoData={{ queueSize: 1, upcoming: 7 }}
+      fields={[
+        { label: 'QUEUE',         key: 'queueSize' },
+        { label: 'UPCOMING (7d)', key: 'upcoming'  },
+      ]}
+      onOpenWebUI={onOpenWebUI}
+    />
   );
 }
 
