@@ -7,14 +7,7 @@
       "Bash(git push *)",
       "Bash(git -c commit.gpgsign=false add .)",
       "Bash(git -c commit.gpgsign=false commit -m \"Initial commit\")",
-      "PowerShell(Get-ChildItem \"C:\\\\Git\\\\UI\\\\project\" -Force | ForEach-Object { $_.FullName })",
-      "Bash(bash *)",
-      "PowerShell(New-Item *)",
-      "Bash(git config *)",
-      "Bash(Get-ChildItem -Path \"C:\\\\Git\\\\UI\" -Directory)",
-      "Bash(Select-Object Name)",
-      "PowerShell(Get-ChildItem -Path \"C:\\\\Git\\\\UI\\\\project\" -Recurse | Select-Object Name, @{Name=\"Path\";Expression={$_.FullName.Replace\\('C:\\\\Git\\\\UI\\\\project\\\\', ''\\)}} | Sort-Object Path)",
-      "PowerShell(Rename-Item *)"
+      "Bash(git config *)"
     ]
   }
 }
