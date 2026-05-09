@@ -84,6 +84,34 @@ test('POST /api/ai/chat 400s on empty messages', async () => {
   expect(res.status).toBe(400);
 });
 
+test('POST /api/ai/chat defaults to includeContext=false, useTools=false (spec v1)', async () => {
+  ai.isConfigured.mockReturnValue(true);
+  let captured;
+  ai.streamChat.mockImplementation(async function* (_cfg, _msgs, opts) {
+    captured = opts;
+    yield { done: true, usage: null };
+  });
+  await request(app)
+    .post('/api/ai/chat')
+    .set('x-api-key', testConfig.apiKey)
+    .send({ messages: [{ role: 'user', content: 'hi' }] });
+  expect(captured).toEqual({ includeContext: false, useTools: false });
+});
+
+test('POST /api/ai/chat honours explicit {includeContext:true, useTools:true}', async () => {
+  ai.isConfigured.mockReturnValue(true);
+  let captured;
+  ai.streamChat.mockImplementation(async function* (_cfg, _msgs, opts) {
+    captured = opts;
+    yield { done: true, usage: null };
+  });
+  await request(app)
+    .post('/api/ai/chat')
+    .set('x-api-key', testConfig.apiKey)
+    .send({ messages: [{ role: 'user', content: 'hi' }], includeContext: true, useTools: true });
+  expect(captured).toEqual({ includeContext: true, useTools: true });
+});
+
 test('POST /api/ai/chat streams SSE envelope from streamChat', async () => {
   ai.isConfigured.mockReturnValue(true);
   ai.streamChat.mockImplementation(async function* () {

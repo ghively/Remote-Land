@@ -672,13 +672,10 @@ function WSTerminalSession({ wsUrl }) {
   return <div ref={containerRef} style={{ flex: 1, height: '100%', minHeight: 0, background: '#050505' }} />;
 }
 
-// ── Terminal Pane (multi-tab) ─────────────────────────────────────────────────
-function TerminalPane({ winId, sessions, activeSess, onTabChange, onAddTab, onCloseTab, onUpdateSession }) {
-  const { api, isDemo } = (window.useBackend ? window.useBackend() : { api: null, isDemo: true });
-  if (!isDemo && api) {
-    return <WSTerminalSession wsUrl={api.terminalUrl()} />;
-  }
-
+// ── Simulated Terminal Pane (demo mode) ──────────────────────────────────────
+// Tab-based mock terminal driven by TermSession's in-memory history walker.
+// Used when apiKey === '__demo__'; live mode renders WSTerminalSession instead.
+function SimulatedTerminalPane({ winId, sessions, activeSess, onTabChange, onAddTab, onCloseTab, onUpdateSession }) {
   const winSessions = sessions.filter(s => s.winId === winId);
   const activeSession = winSessions.find(s => s.id === activeSess) || winSessions[0];
 
@@ -761,5 +758,16 @@ function TerminalPane({ winId, sessions, activeSess, onTabChange, onAddTab, onCl
   );
 }
 
+// ── Terminal Pane (router) ───────────────────────────────────────────────────
+// Picks between the real PTY-over-WebSocket session (live) and the simulated
+// pane (demo). The simulator path is preserved untouched so demo mode keeps
+// working exactly as it did before Sub-project 3.
+function TerminalPane(props) {
+  const { api, isDemo } = (window.useBackend ? window.useBackend() : { api: null, isDemo: true });
+  if (!isDemo && api) return <WSTerminalSession wsUrl={api.terminalUrl()} />;
+  return <SimulatedTerminalPane {...props} />;
+}
+
 window.TerminalPane = TerminalPane;
+window.SimulatedTerminalPane = SimulatedTerminalPane;
 window.createSession = createSession;

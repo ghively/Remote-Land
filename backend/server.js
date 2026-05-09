@@ -95,10 +95,11 @@ function createApp(config) {
     if (!Array.isArray(req.body.messages) || req.body.messages.length === 0) {
       return res.status(400).json({ error: 'messages required' });
     }
-    // Default: include a live system snapshot AND allow tool calling. Caller
-    // can opt out per-request via {includeContext:false}/{useTools:false}.
-    const includeContext = req.body.includeContext !== false;
-    const useTools       = req.body.useTools       !== false;
+    // Spec 4 keeps the v1 chat prompt static and treats tool calling as a
+    // non-goal, so route defaults are OFF. The frontend AIChatPanel passes
+    // {includeContext:true, useTools:true} explicitly when its toggles are on.
+    const includeContext = req.body.includeContext === true;
+    const useTools       = req.body.useTools       === true;
     res.setHeader('content-type', 'text/event-stream');
     res.setHeader('cache-control', 'no-cache');
     res.setHeader('connection', 'keep-alive');
