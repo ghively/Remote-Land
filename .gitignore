@@ -8,3 +8,6 @@ desktop.ini
 
 # Backend config (contains API key — never commit)
 backend/config.json
+
+# Backend dependencies
+backend/node_modules/
