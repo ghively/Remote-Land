@@ -182,6 +182,15 @@ async function executeTool(name, args, config) {
   }
 }
 
+class UpstreamError extends Error {
+  constructor(status, retryAfter) {
+    super(`upstream HTTP ${status}`);
+    this.name = 'UpstreamError';
+    this.status = status;
+    if (retryAfter) this.retryAfter = retryAfter;
+  }
+}
+
 // Yields raw upstream {choice, usage} events parsed out of the SSE stream.
 async function* streamRawSSE(config, body) {
   const res = await fetch(endpoint(config), {
@@ -190,8 +199,9 @@ async function* streamRawSSE(config, body) {
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`upstream HTTP ${res.status}: ${text.slice(0, 200)}`);
+    // Drain the body so the upstream connection can close, but never echo it.
+    await res.text().catch(() => '');
+    throw new UpstreamError(res.status, res.headers && res.headers.get && res.headers.get('retry-after'));
   }
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
@@ -326,10 +336,19 @@ async function suggestShell(config, intent) {
     response_format: { type: 'json_schema', json_schema: SHELL_SCHEMA },
     temperature: 0,
   };
-  const res = await axios.post(endpoint(config), body, {
-    headers: authHeaders(config),
-    timeout: 20000,
-  });
+  let res;
+  try {
+    res = await axios.post(endpoint(config), body, {
+      headers: authHeaders(config),
+      timeout: 20000,
+    });
+  } catch (err) {
+    if (err.response) {
+      const ra = err.response.headers && err.response.headers['retry-after'];
+      throw new UpstreamError(err.response.status, ra);
+    }
+    throw err;
+  }
   const text = (res.data && res.data.choices && res.data.choices[0]
                 && res.data.choices[0].message && res.data.choices[0].message.content) || '';
   const match = text.match(/\{[\s\S]*\}/);
@@ -352,8 +371,8 @@ async function* streamCompletions(config, body) {
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`upstream HTTP ${res.status}: ${text.slice(0, 200)}`);
+    await res.text().catch(() => '');
+    throw new UpstreamError(res.status, res.headers && res.headers.get && res.headers.get('retry-after'));
   }
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
@@ -381,6 +400,6 @@ async function* streamCompletions(config, body) {
 }
 
 module.exports = {
-  isConfigured, streamChat, suggestShell, streamLogAnalysis,
+  isConfigured, streamChat, suggestShell, streamLogAnalysis, UpstreamError,
   _internals: { endpoint, authHeaders, SHELL_SCHEMA, executeTool, CHAT_TOOLS, formatContextMessage },
 };
