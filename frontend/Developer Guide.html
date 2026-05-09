@@ -1,0 +1,816 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NAS_TERMINAL — Developer Guide</title>
+  <link rel="stylesheet" href="colors_and_type.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; min-height: 100vh; background: var(--bg-dark); color: var(--text-primary); font-family: var(--font-system); font-size: 15px; line-height: 1.7; }
+    body { background-image: url('assets/bg_server.png'); background-size: cover; background-position: center; background-attachment: fixed; }
+    body::after { content: " "; display: block; position: fixed; inset: 0;
+      background: linear-gradient(rgba(18,16,16,0) 50%, rgba(0,0,0,.18) 50%), linear-gradient(90deg, rgba(255,0,0,.04), rgba(0,255,0,.015), rgba(0,0,255,.04));
+      background-size: 100% 3px, 3px 100%; z-index: 9999; pointer-events: none; animation: flicker .15s infinite; }
+    @keyframes flicker { 0%{opacity:.93}50%{opacity:.97}100%{opacity:.93} }
+    a { color: var(--neon-cyan); text-decoration: none; }
+    a:hover { color: var(--neon-purple); text-shadow: var(--bloom-purple); }
+    h1, h2, h3 { text-shadow: var(--bloom-green); }
+
+    .layout { display: flex; min-height: 100vh; }
+
+    /* Sidebar nav */
+    .sidebar {
+      width: 240px; flex-shrink: 0;
+      background: rgba(0,0,0,0.7); backdrop-filter: blur(10px);
+      border-right: 1px solid var(--border-green-30);
+      padding: 20px 0;
+      position: sticky; top: 0; height: 100vh; overflow-y: auto;
+      scrollbar-width: thin; scrollbar-color: rgba(0,255,0,0.2) transparent;
+    }
+    .sidebar-logo { padding: 0 20px 20px; border-bottom: 1px dashed rgba(0,255,0,0.2); margin-bottom: 12px; }
+    .sidebar-logo-title { font-size: 1rem; color: var(--neon-cyan); text-shadow: var(--bloom-cyan); letter-spacing: 2px; font-weight: bold; }
+    .sidebar-logo-sub { font-size: 0.65rem; color: var(--text-dim); letter-spacing: 1px; margin-top: 4px; }
+    .sidebar-section { padding: 4px 20px; font-size: 0.65rem; color: var(--text-dim); letter-spacing: 2px; margin: 10px 0 4px; }
+    .sidebar-link { display: block; padding: 5px 20px; font-size: 0.78rem; color: var(--text-dim); letter-spacing: 1px; transition: all 0.15s; cursor: pointer; border-left: 2px solid transparent; }
+    .sidebar-link:hover { color: var(--neon-green); border-left-color: var(--neon-green); background: rgba(0,255,0,0.04); text-shadow: var(--glow-green-sm); }
+    .sidebar-link.active { color: var(--neon-green); border-left-color: var(--neon-green); text-shadow: var(--glow-green-sm); }
+    .sidebar-back { display: block; padding: 8px 20px; font-size: 0.75rem; color: var(--neon-cyan); margin-bottom: 12px; border-bottom: 1px dashed rgba(0,255,0,0.2); padding-bottom: 16px; }
+
+    /* Main content */
+    .content { flex: 1; padding: 40px 48px; max-width: 900px; }
+    .content-section { margin-bottom: 60px; scroll-margin-top: 20px; }
+
+    h1 { font-size: 1.8rem; color: var(--neon-cyan); text-shadow: var(--bloom-cyan); letter-spacing: 3px; margin-bottom: 8px; }
+    .doc-subtitle { font-size: 0.85rem; color: var(--text-dim); letter-spacing: 1px; margin-bottom: 32px; padding-bottom: 16px; border-bottom: 2px solid var(--neon-purple); }
+    h2 { font-size: 1.2rem; color: var(--neon-cyan); text-shadow: var(--bloom-cyan); letter-spacing: 2px; margin-bottom: 12px; border-bottom: 1px solid rgba(0,243,255,0.2); padding-bottom: 6px; }
+    h3 { font-size: 0.95rem; color: var(--neon-green); text-shadow: var(--glow-green-sm); letter-spacing: 1px; margin: 20px 0 8px; }
+    p { color: var(--text-primary); margin-bottom: 12px; font-size: 0.88rem; line-height: 1.8; }
+    ul, ol { padding-left: 20px; margin-bottom: 12px; }
+    li { font-size: 0.85rem; color: var(--text-primary); margin-bottom: 5px; line-height: 1.7; }
+    li::marker { color: var(--neon-purple); }
+    strong { color: var(--neon-green); font-weight: bold; }
+    em { color: var(--neon-cyan); font-style: normal; }
+
+    code { font-family: var(--font-mono); font-size: 0.82rem; background: rgba(0,255,0,0.08); border: 1px solid rgba(0,255,0,0.2); border-radius: 3px; padding: 1px 6px; color: var(--neon-green); }
+
+    pre {
+      background: rgba(0,0,0,0.7); border: 1px solid rgba(0,255,0,0.2); border-radius: 6px;
+      padding: 16px 18px; overflow-x: auto; margin: 12px 0 20px;
+      scrollbar-width: thin; scrollbar-color: rgba(0,255,0,0.2) transparent;
+      position: relative;
+    }
+    pre code { background: none; border: none; padding: 0; font-size: 0.8rem; color: var(--text-primary); line-height: 1.8; }
+    pre .comment { color: var(--text-dim); }
+    pre .keyword { color: var(--neon-cyan); }
+    pre .string  { color: var(--neon-purple); }
+    pre .fn      { color: #ffbd2e; }
+    pre .num     { color: var(--neon-green); }
+
+    .callout {
+      background: rgba(0,0,0,0.5); border-left: 3px solid var(--neon-green);
+      border-radius: 0 4px 4px 0; padding: 12px 16px; margin: 14px 0;
+      font-size: 0.82rem;
+    }
+    .callout.warn { border-left-color: #ffbd2e; }
+    .callout.info { border-left-color: var(--neon-cyan); }
+    .callout p { margin: 0; }
+
+    .file-tree { font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-dim); line-height: 2; }
+    .file-tree .dir  { color: var(--neon-cyan); }
+    .file-tree .file { color: var(--text-primary); }
+    .file-tree .note { color: var(--text-dim); font-size: 0.72rem; }
+
+    table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; font-size: 0.82rem; }
+    th { color: var(--neon-cyan); text-align: left; padding: 8px 12px; border-bottom: 2px solid rgba(0,243,255,0.3); letter-spacing: 1px; }
+    td { padding: 7px 12px; border-bottom: 1px solid rgba(0,255,0,0.06); color: var(--text-primary); }
+    tr:hover td { background: rgba(0,255,0,0.03); }
+    td code { font-size: 0.78rem; }
+
+    .badge { display: inline-block; font-size: 0.65rem; padding: 2px 7px; border-radius: 2px; letter-spacing: 1px; margin-left: 6px; vertical-align: middle; }
+    .badge.green  { background: rgba(0,255,0,0.15); color: #27c93f; border: 1px solid rgba(39,201,63,0.3); }
+    .badge.yellow { background: rgba(255,189,46,0.15); color: #ffbd2e; border: 1px solid rgba(255,189,46,0.3); }
+    .badge.red    { background: rgba(255,95,86,0.15); color: #ff5f56; border: 1px solid rgba(255,95,86,0.3); }
+    .badge.cyan   { background: rgba(0,243,255,0.1); color: var(--neon-cyan); border: 1px solid rgba(0,243,255,0.25); }
+  </style>
+</head>
+<body>
+<div class="layout">
+
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="sidebar-logo">
+      <div class="sidebar-logo-title">NAS_TERMINAL</div>
+      <div class="sidebar-logo-sub">Developer Guide v1.0</div>
+    </div>
+    <a class="sidebar-back" href="NAS Terminal.html">[← BACK TO APP]</a>
+
+    <div class="sidebar-section">OVERVIEW</div>
+    <a class="sidebar-link" href="#architecture">Architecture</a>
+    <a class="sidebar-link" href="#file-structure">File Structure</a>
+    <a class="sidebar-link" href="#design-system">Design System</a>
+
+    <div class="sidebar-section">TERMINAL</div>
+    <a class="sidebar-link" href="#tmux-guide">tmux Backend</a>
+    <a class="sidebar-link" href="#ttyd-guide">ttyd WebSocket</a>
+    <a class="sidebar-link" href="#xterm-guide">xterm.js Integration</a>
+    <a class="sidebar-link" href="#ssh-proxy">SSH Proxy Setup</a>
+
+    <div class="sidebar-section">WINDOW MANAGER</div>
+    <a class="sidebar-link" href="#wm-overview">WM Overview</a>
+    <a class="sidebar-link" href="#dwindle">Dwindle Tiling</a>
+    <a class="sidebar-link" href="#keyboard">Keyboard Bindings</a>
+
+    <div class="sidebar-section">API INTEGRATION</div>
+    <a class="sidebar-link" href="#radarr-api">Radarr API</a>
+    <a class="sidebar-link" href="#sonarr-api">Sonarr API</a>
+    <a class="sidebar-link" href="#sabnzbd-api">SABnzbd API</a>
+    <a class="sidebar-link" href="#extending-apis">Adding New APIs</a>
+
+    <div class="sidebar-section">DEPLOYMENT</div>
+    <a class="sidebar-link" href="#self-host">Self-Hosting</a>
+    <a class="sidebar-link" href="#nginx-config">Nginx Config</a>
+    <a class="sidebar-link" href="#docker-deploy">Docker Deploy</a>
+    <a class="sidebar-link" href="#security">Security</a>
+
+    <div class="sidebar-section">CUSTOMISATION</div>
+    <a class="sidebar-link" href="#theming">Theming</a>
+    <a class="sidebar-link" href="#adding-panels">Adding Panels</a>
+    <a class="sidebar-link" href="#adding-webapps">Adding Webapps</a>
+  </nav>
+
+  <!-- Main content -->
+  <main class="content">
+    <h1>NAS_TERMINAL</h1>
+    <div class="doc-subtitle">&gt; DEVELOPER GUIDE — Architecture, Deployment &amp; Extension Reference</div>
+
+    <!-- ── ARCHITECTURE ─────────────────────────────────────────────────── -->
+    <section class="content-section" id="architecture">
+      <h2>Architecture</h2>
+      <p>NAS_TERMINAL is a fully client-side single-page application. There is no build step — it runs directly in the browser via <strong>React 18 + Babel standalone</strong>. All state is managed in React; settings and webapp configs are persisted in <code>localStorage</code>.</p>
+      <p>The app is composed of independent JSX component files loaded via <code>&lt;script type="text/babel"&gt;</code> tags. Each file exports its components to <code>window</code> so they're accessible across file boundaries without a module bundler.</p>
+
+      <h3>Tech Stack</h3>
+      <table>
+        <tr><th>Layer</th><th>Technology</th><th>Notes</th></tr>
+        <tr><td>UI Framework</td><td>React 18.3.1</td><td>Hooks, functional components</td></tr>
+        <tr><td>Transpiler</td><td>Babel Standalone 7.29.0</td><td>In-browser JSX transpilation</td></tr>
+        <tr><td>Styling</td><td>Plain CSS + CSS custom properties</td><td>No CSS-in-JS, no Tailwind</td></tr>
+        <tr><td>Terminal</td><td>Simulated shell (swap for xterm.js)</td><td>See <a href="#xterm-guide">xterm.js guide</a></td></tr>
+        <tr><td>Storage</td><td><code>localStorage</code></td><td>Settings, bookmarks, API keys</td></tr>
+        <tr><td>Auth</td><td>In-memory session (<code>sessionStorage</code>)</td><td>Replace with real backend</td></tr>
+      </table>
+    </section>
+
+    <!-- ── FILE STRUCTURE ───────────────────────────────────────────────── -->
+    <section class="content-section" id="file-structure">
+      <h2>File Structure</h2>
+      <div class="file-tree">
+        <div><span class="dir">nas-terminal/</span></div>
+        <div>&nbsp;&nbsp;<span class="file">NAS Terminal.html</span> &nbsp;<span class="note">← entry point</span></div>
+        <div>&nbsp;&nbsp;<span class="file">colors_and_type.css</span> &nbsp;<span class="note">← design system tokens</span></div>
+        <div>&nbsp;&nbsp;<span class="file">wm-styles.css</span> &nbsp;<span class="note">← WM + component styles</span></div>
+        <div>&nbsp;&nbsp;<span class="dir">components/</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">WindowManager.jsx</span> &nbsp;<span class="note">← dwindle layout, drag/resize, keyboard</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">TerminalPane.jsx</span> &nbsp;<span class="note">← multi-tab shell emulator</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">SystemPanels.jsx</span> &nbsp;<span class="note">← file mgr, sysmon, logs, docker, services, network, cron</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">MediaAPIPanels.jsx</span> &nbsp;<span class="note">← shared API utils + basic panels</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">MediaPanelsFull.jsx</span> &nbsp;<span class="note">← full Radarr/Sonarr/SABnzbd panels (overrides basic)</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">BrowserPanel.jsx</span> &nbsp;<span class="note">← in-WM web browser</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">AppLauncher.jsx</span> &nbsp;<span class="note">← launcher overlay + webapp registry</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">SettingsPanel.jsx</span> &nbsp;<span class="note">← theming + settings</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">NASTerminal.jsx</span> &nbsp;<span class="note">← root app, login, status bar, WM orchestrator</span></div>
+        <div>&nbsp;&nbsp;<span class="dir">assets/</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">bg_server.png</span> &nbsp;<span class="note">← default wallpaper</span></div>
+        <div>&nbsp;&nbsp;<span class="file">Developer Guide.html</span> &nbsp;<span class="note">← this file</span></div>
+      </div>
+
+      <div class="callout info"><p><strong>Load order matters.</strong> Scripts are loaded sequentially. <code>MediaPanelsFull.jsx</code> must load after <code>MediaAPIPanels.jsx</code> because it calls <code>loadConfig</code> and <code>apiFetch</code> defined there. <code>NASTerminal.jsx</code> must load last as it references all other components.</p></div>
+    </section>
+
+    <!-- ── DESIGN SYSTEM ────────────────────────────────────────────────── -->
+    <section class="content-section" id="design-system">
+      <h2>Design System</h2>
+      <p>All colors, typography, spacing, and animation timing are defined as CSS custom properties in <code>colors_and_type.css</code>. The design language is <strong>Gene Hively's Cyber-Noir</strong> — green phosphor CRT terminals on a server-room wallpaper.</p>
+
+      <h3>Key Tokens</h3>
+      <table>
+        <tr><th>Token</th><th>Default</th><th>Usage</th></tr>
+        <tr><td><code>--neon-green</code></td><td><code>#00ff00</code></td><td>Primary accent: borders, buttons, prompts</td></tr>
+        <tr><td><code>--neon-cyan</code></td><td><code>#00f3ff</code></td><td>Titles, section headers, active links</td></tr>
+        <tr><td><code>--neon-purple</code></td><td><code>#8000ff</code></td><td>Tags, separators, prompt char</td></tr>
+        <tr><td><code>--bg-glass</code></td><td><code>rgba(10,10,15,.82)</code></td><td>Window glass fill</td></tr>
+        <tr><td><code>--font-system</code></td><td>JetBrains Mono</td><td>All UI text</td></tr>
+        <tr><td><code>--shadow-window</code></td><td>green+purple glow + inner vignette</td><td>Window elevation</td></tr>
+      </table>
+
+      <h3>Rainbow Border</h3>
+      <p>Window borders use a CSS <code>conic-gradient</code> on the <code>::before</code> pseudo with a <code>-webkit-mask</code> XOR composite to reveal only the border area. The angle is driven by a JavaScript <code>requestAnimationFrame</code> loop that sets <code>--gradient-angle</code> on <code>:root</code> every frame, bypassing <code>@property</code> browser support requirements.</p>
+    </section>
+
+    <!-- ── TMUX ─────────────────────────────────────────────────────────── -->
+    <section class="content-section" id="tmux-guide">
+      <h2>tmux as Terminal Backend <span class="badge green">RECOMMENDED</span></h2>
+      <p>tmux is an excellent backend for NAS_TERMINAL. Unlike a raw shell, tmux provides <strong>persistent sessions</strong> (survive disconnects), <strong>window/pane multiplexing</strong> (map directly to our WM concept), and <strong>session sharing</strong> (multiple browser tabs see the same session).</p>
+
+      <h3>Why tmux over a raw shell</h3>
+      <ul>
+        <li>Sessions survive network drops — reconnecting re-attaches to the same state</li>
+        <li>You can pre-create named sessions (<code>nas-monitor</code>, <code>nas-logs</code>, <code>nas-admin</code>) that the UI auto-attaches to</li>
+        <li>tmux windows ↔ terminal tabs; tmux panes ↔ split terminals — both concepts already exist in this WM</li>
+        <li>Scriptable: start long-running commands (<code>htop</code>, <code>journalctl -f</code>, <code>docker stats</code>) in named windows at boot</li>
+      </ul>
+
+      <h3>Setup with ttyd (tmux bridge)</h3>
+      <pre><code><span class="comment"># Install ttyd on Debian/Ubuntu</span>
+apt install ttyd
+
+<span class="comment"># Start ttyd bridging into a tmux session</span>
+tmux new-session -d -s nas-main   <span class="comment"># Create persistent session</span>
+ttyd -p 7681 tmux attach -t nas-main
+
+<span class="comment"># Or start fresh tmux per connection (no persistence)</span>
+ttyd -p 7681 tmux new-session
+
+<span class="comment"># With auth (basic HTTP auth)</span>
+ttyd -p 7681 -c username:password tmux attach -t nas-main
+
+<span class="comment"># Run as systemd service</span>
+cat &gt; /etc/systemd/system/ttyd.service &lt;&lt;EOF
+[Unit]
+Description=ttyd WebSocket terminal
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/ttyd -p 7681 tmux attach -t nas-main
+Restart=always
+User=root
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl enable --now ttyd</code></pre>
+
+      <h3>Pre-configure tmux sessions at boot</h3>
+      <pre><code><span class="comment"># /root/.config/nas-terminal/init-sessions.sh</span>
+#!/bin/bash
+
+<span class="comment"># Main admin session</span>
+tmux new-session -d -s nas-main -n admin
+
+<span class="comment"># System monitor window</span>
+tmux new-window -t nas-main -n monitor
+tmux send-keys -t nas-main:monitor 'htop' Enter
+
+<span class="comment"># Log viewer window</span>
+tmux new-window -t nas-main -n logs
+tmux send-keys -t nas-main:logs 'journalctl -f' Enter
+
+<span class="comment"># Docker stats window</span>
+tmux new-window -t nas-main -n docker
+tmux send-keys -t nas-main:docker 'watch docker ps' Enter
+
+<span class="comment"># Start ttyd on each named window</span>
+ttyd -p 7681 tmux attach -t nas-main:admin   &amp;
+ttyd -p 7682 tmux attach -t nas-main:monitor &amp;
+ttyd -p 7683 tmux attach -t nas-main:logs    &amp;</code></pre>
+    </section>
+
+    <!-- ── TTYD ──────────────────────────────────────────────────────────── -->
+    <section class="content-section" id="ttyd-guide">
+      <h2>ttyd Configuration</h2>
+      <p>ttyd exposes a WebSocket terminal server at <code>ws://host:port/ws</code> and serves an xterm.js frontend at <code>http://host:port</code>. NAS_TERMINAL replaces the xterm.js frontend while reusing the WebSocket protocol.</p>
+
+      <h3>ttyd flags reference</h3>
+      <table>
+        <tr><th>Flag</th><th>Example</th><th>Effect</th></tr>
+        <tr><td><code>-p PORT</code></td><td><code>-p 7681</code></td><td>Listen port</td></tr>
+        <tr><td><code>-c user:pass</code></td><td><code>-c gene:secret</code></td><td>Basic auth</td></tr>
+        <tr><td><code>-t fontSize=14</code></td><td><code>-t fontSize=16</code></td><td>Default font size</td></tr>
+        <tr><td><code>-t theme=...</code></td><td>JSON xterm theme object</td><td>Terminal colors</td></tr>
+        <tr><td><code>-W</code></td><td></td><td>Allow write access (default)</td></tr>
+        <tr><td><code>-R</code></td><td></td><td>Read-only mode</td></tr>
+        <tr><td><code>-m MAX</code></td><td><code>-m 6</code></td><td>Max concurrent connections</td></tr>
+        <tr><td><code>--ssl</code></td><td></td><td>Enable TLS (with --ssl-cert/key)</td></tr>
+      </table>
+    </section>
+
+    <!-- ── XTERM.JS ──────────────────────────────────────────────────────── -->
+    <section class="content-section" id="xterm-guide">
+      <h2>xterm.js Integration</h2>
+      <p>To replace the simulated shell in <code>TerminalPane.jsx</code> with a real WebSocket terminal, follow these steps:</p>
+
+      <h3>1. Add xterm.js to the HTML</h3>
+      <pre><code><span class="comment">&lt;!-- In NAS Terminal.html, add to &lt;head&gt;: --&gt;</span>
+&lt;link  rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css"&gt;
+&lt;script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"&gt;&lt;/script&gt;
+&lt;script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"&gt;&lt;/script&gt;
+&lt;script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.js"&gt;&lt;/script&gt;</code></pre>
+
+      <h3>2. Replace TermSession in TerminalPane.jsx</h3>
+      <pre><code><span class="keyword">function</span> <span class="fn">TermSession</span>({ session, ttydUrl }) {
+  <span class="keyword">const</span> containerRef = useRef(<span class="keyword">null</span>);
+  <span class="keyword">const</span> termRef = useRef(<span class="keyword">null</span>);
+  <span class="keyword">const</span> wsRef = useRef(<span class="keyword">null</span>);
+
+  useEffect(() => {
+    <span class="keyword">if</span> (!containerRef.current) <span class="keyword">return</span>;
+
+    <span class="comment">// Init xterm</span>
+    <span class="keyword">const</span> term = <span class="keyword">new</span> Terminal({
+      fontFamily: <span class="string">'JetBrains Mono, Courier New, monospace'</span>,
+      fontSize: <span class="num">14</span>,
+      theme: {
+        background: <span class="string">'#000800'</span>,
+        foreground: <span class="string">'#ccffcc'</span>,
+        cursor:     <span class="string">'#00ff00'</span>,
+        green:      <span class="string">'#00ff00'</span>,
+        cyan:       <span class="string">'#00f3ff'</span>,
+        magenta:    <span class="string">'#8000ff'</span>,
+      },
+      cursorBlink: <span class="keyword">true</span>,
+    });
+
+    <span class="keyword">const</span> fitAddon = <span class="keyword">new</span> FitAddon.FitAddon();
+    term.loadAddon(fitAddon);
+    term.open(containerRef.current);
+    fitAddon.fit();
+    termRef.current = term;
+
+    <span class="comment">// Connect to ttyd WebSocket</span>
+    <span class="keyword">const</span> ws = <span class="keyword">new</span> WebSocket(ttydUrl || <span class="string">`ws://${session.host}:7681/ws`</span>);
+    ws.binaryType = <span class="string">'arraybuffer'</span>;
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      <span class="comment">// ttyd protocol: send auth token first</span>
+      ws.send(JSON.stringify({ AuthToken: <span class="string">''</span> }));
+    };
+
+    ws.onmessage = (event) => {
+      <span class="keyword">if</span> (<span class="keyword">typeof</span> event.data === <span class="string">'string'</span>) {
+        <span class="keyword">const</span> msg = JSON.parse(event.data);
+        <span class="keyword">if</span> (msg.Arguments) term.write(atob(msg.Arguments));
+      } <span class="keyword">else</span> {
+        <span class="keyword">const</span> data = <span class="keyword">new</span> Uint8Array(event.data);
+        <span class="keyword">if</span> (data[<span class="num">0</span>] === <span class="num">1</span>) term.write(data.slice(<span class="num">1</span>));
+      }
+    };
+
+    term.onData(data => {
+      <span class="keyword">if</span> (ws.readyState === WebSocket.OPEN) {
+        ws.send(<span class="string">'0'</span> + data);
+      }
+    });
+
+    <span class="comment">// Resize handler</span>
+    <span class="keyword">const</span> resize = () => {
+      fitAddon.fit();
+      <span class="keyword">if</span> (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          columns: term.cols, rows: term.rows
+        }));
+      }
+    };
+    <span class="keyword">const</span> ro = <span class="keyword">new</span> ResizeObserver(resize);
+    ro.observe(containerRef.current);
+
+    <span class="keyword">return</span> () => {
+      ro.disconnect();
+      ws.close();
+      term.dispose();
+    };
+  }, [session.id, ttydUrl]);
+
+  <span class="keyword">return</span> (
+    &lt;div ref={containerRef}
+      style={{ flex: <span class="num">1</span>, overflow: <span class="string">'hidden'</span>, background: <span class="string">'#000800'</span>, padding: <span class="string">'4px'</span> }}
+    /&gt;
+  );
+}</code></pre>
+
+      <div class="callout info"><p><strong>ttyd protocol:</strong> ttyd uses a simple framing protocol. Byte <code>0</code> prefix = stdin data; byte <code>1</code> prefix = stdout/stderr from server. The initial handshake sends <code>{"AuthToken": ""}</code>.</p></div>
+    </section>
+
+    <!-- ── SSH PROXY ─────────────────────────────────────────────────────── -->
+    <section class="content-section" id="ssh-proxy">
+      <h2>SSH Proxy Setup</h2>
+      <p>For connecting to <em>remote</em> machines from your NAS (not just the NAS itself), run a WebSocket SSH proxy on the NAS:</p>
+
+      <h3>Option A: webssh (Python)</h3>
+      <pre><code><span class="comment"># Install</span>
+pip install webssh
+
+<span class="comment"># Start</span>
+wssh --port=8888 --address=0.0.0.0
+
+<span class="comment"># Connects to: ws://nas.local:8888/?hostname=HOST&username=USER</span></code></pre>
+
+      <h3>Option B: ssh2ws (Node)</h3>
+      <pre><code><span class="comment"># Install</span>
+npm install -g ssh2ws
+
+<span class="comment"># Start</span>
+ssh2ws --port 8888
+
+<span class="comment"># Then in TerminalPane.jsx, connect via:</span>
+<span class="keyword">const</span> ws = <span class="keyword">new</span> WebSocket(
+  <span class="string">`ws://nas.local:8888/?host=${targetHost}&user=${user}&pass=${pass}`</span>
+);</code></pre>
+
+      <h3>Option C: Cloudflare Tunnel (remote access)</h3>
+      <pre><code><span class="comment"># Install cloudflared on NAS</span>
+wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+chmod +x cloudflared-linux-amd64
+mv cloudflared-linux-amd64 /usr/local/bin/cloudflared
+
+<span class="comment"># Expose NAS_TERMINAL securely without port forwarding</span>
+cloudflared tunnel --url http://localhost:8765</code></pre>
+    </section>
+
+    <!-- ── WM OVERVIEW ───────────────────────────────────────────────────── -->
+    <section class="content-section" id="wm-overview">
+      <h2>Window Manager Overview</h2>
+      <p>The WM is implemented in <code>WindowManager.jsx</code> and orchestrated in <code>NASTerminal.jsx</code> (<code>WMDesktop</code> component). Two modes:</p>
+      <ul>
+        <li><strong>Tiled mode</strong> — dwindle recursive bisect. Windows are positioned by the algorithm; drag is disabled. Resize via tiling handles.</li>
+        <li><strong>Float mode</strong> — drag via titlebar, resize via SE corner + right/bottom edge handles. Position stored in window state.</li>
+      </ul>
+      <p>Toggle with <code>[TILED]</code>/<code>[FLOAT]</code> in the dock or <code>Super+T</code>.</p>
+    </section>
+
+    <!-- ── DWINDLE ───────────────────────────────────────────────────────── -->
+    <section class="content-section" id="dwindle">
+      <h2>Dwindle Tiling Algorithm</h2>
+      <p>The algorithm recursively bisects a rectangle, alternating horizontal/vertical splits based on current aspect ratio — wider rects split horizontally, taller ones vertically.</p>
+      <pre><code><span class="keyword">function</span> <span class="fn">dwindleLayout</span>(count, rect, depth = <span class="num">0</span>) {
+  <span class="keyword">if</span> (count === <span class="num">0</span>) <span class="keyword">return</span> [];
+  <span class="keyword">if</span> (count === <span class="num">1</span>) <span class="keyword">return</span> [{ ...rect }];
+  <span class="keyword">const</span> { x, y, w, h } = rect;
+  <span class="keyword">const</span> gap = <span class="num">8</span>;
+  <span class="keyword">const</span> splitHoriz = w >= h;
+  <span class="comment">// Split into A (first window) and B (recurse remaining)</span>
+  <span class="keyword">return</span> [A, ...dwindleLayout(count - <span class="num">1</span>, B, depth + <span class="num">1</span>)];
+}</code></pre>
+      <p>With 6 windows the layout looks like: 1 large left, then the right half keeps recursing vertically. Transitions use <code>cubic-bezier(0.25,1,0.5,1)</code> at 350ms — Hyprland's ease-out-quart.</p>
+    </section>
+
+    <!-- ── KEYBOARD ──────────────────────────────────────────────────────── -->
+    <section class="content-section" id="keyboard">
+      <h2>Keyboard Bindings</h2>
+      <div class="callout info"><p><strong>Super key</strong> = <code>Cmd</code> on macOS, <code>Ctrl</code> on Windows/Linux (browser intercepts Meta on Linux sometimes — use Ctrl as fallback).</p></div>
+      <table>
+        <tr><th>Binding</th><th>Action</th></tr>
+        <tr><td><code>Super + Enter</code></td><td>New terminal window</td></tr>
+        <tr><td><code>Super + Space</code></td><td>Open app launcher</td></tr>
+        <tr><td><code>Super + Q</code></td><td>Close active window</td></tr>
+        <tr><td><code>Super + W</code></td><td>Minimize active window</td></tr>
+        <tr><td><code>Super + T</code></td><td>Toggle tiling / float mode</td></tr>
+        <tr><td><code>Super + /</code></td><td>Keyboard cheatsheet overlay</td></tr>
+        <tr><td><code>Alt + Tab</code></td><td>Cycle windows forward</td></tr>
+        <tr><td><code>Alt + Shift + Tab</code></td><td>Cycle windows backward</td></tr>
+        <tr><td><code>Super + ← → ↑ ↓</code></td><td>Move window 40px (float mode)</td></tr>
+        <tr><td><code>Escape</code></td><td>Close launcher / overlays</td></tr>
+      </table>
+    </section>
+
+    <!-- ── RADARR API ────────────────────────────────────────────────────── -->
+    <section class="content-section" id="radarr-api">
+      <h2>Radarr API</h2>
+      <p>Radarr exposes a REST API at <code>/api/v3/</code>. All endpoints require the <code>apikey</code> query parameter.</p>
+      <table>
+        <tr><th>Endpoint</th><th>Method</th><th>Usage</th></tr>
+        <tr><td><code>/api/v3/movie</code></td><td>GET</td><td>Full movie library</td></tr>
+        <tr><td><code>/api/v3/movie/{id}</code></td><td>GET/PUT/DELETE</td><td>Single movie</td></tr>
+        <tr><td><code>/api/v3/movie/lookup</code></td><td>GET</td><td>TMDB search (<code>?term=...</code>)</td></tr>
+        <tr><td><code>/api/v3/queue</code></td><td>GET</td><td>Download queue</td></tr>
+        <tr><td><code>/api/v3/queue/{id}</code></td><td>DELETE</td><td>Remove queue item</td></tr>
+        <tr><td><code>/api/v3/command</code></td><td>POST</td><td>Trigger commands (e.g. <code>MoviesSearch</code>)</td></tr>
+        <tr><td><code>/api/v3/qualityprofile</code></td><td>GET</td><td>Quality profiles</td></tr>
+        <tr><td><code>/api/v3/rootfolder</code></td><td>GET</td><td>Root folders</td></tr>
+        <tr><td><code>/api/v3/history</code></td><td>GET</td><td>Download history</td></tr>
+      </table>
+
+      <h3>Adding a movie</h3>
+      <pre><code><span class="keyword">const</span> response = <span class="keyword">await</span> fetch(<span class="string">`${radarrUrl}/api/v3/movie?apikey=${apiKey}`</span>, {
+  method: <span class="string">'POST'</span>,
+  headers: { <span class="string">'Content-Type'</span>: <span class="string">'application/json'</span> },
+  body: JSON.stringify({
+    tmdbId: <span class="num">693134</span>,
+    title: <span class="string">'Dune: Part Two'</span>,
+    qualityProfileId: <span class="num">4</span>,        <span class="comment">// 1080p profile</span>
+    rootFolderPath: <span class="string">'/mnt/array/media/Movies'</span>,
+    monitored: <span class="keyword">true</span>,
+    addOptions: { searchForMovie: <span class="keyword">true</span> }
+  })
+});</code></pre>
+    </section>
+
+    <!-- ── SONARR API ────────────────────────────────────────────────────── -->
+    <section class="content-section" id="sonarr-api">
+      <h2>Sonarr API</h2>
+      <table>
+        <tr><th>Endpoint</th><th>Method</th><th>Usage</th></tr>
+        <tr><td><code>/api/v3/series</code></td><td>GET/POST</td><td>Series library / add series</td></tr>
+        <tr><td><code>/api/v3/series/{id}</code></td><td>GET/PUT/DELETE</td><td>Single series</td></tr>
+        <tr><td><code>/api/v3/episode?seriesId={id}</code></td><td>GET</td><td>Episodes for a series</td></tr>
+        <tr><td><code>/api/v3/episodefile</code></td><td>GET/DELETE</td><td>Episode files</td></tr>
+        <tr><td><code>/api/v3/calendar</code></td><td>GET</td><td>Upcoming episodes (<code>?start=&end=</code>)</td></tr>
+        <tr><td><code>/api/v3/queue</code></td><td>GET</td><td>Download queue</td></tr>
+        <tr><td><code>/api/v3/command</code></td><td>POST</td><td>SeriesSearch, EpisodeSearch, etc.</td></tr>
+        <tr><td><code>/api/v3/series/lookup</code></td><td>GET</td><td>TVDB search</td></tr>
+      </table>
+    </section>
+
+    <!-- ── SABNZBD API ───────────────────────────────────────────────────── -->
+    <section class="content-section" id="sabnzbd-api">
+      <h2>SABnzbd API</h2>
+      <p>SABnzbd uses a single endpoint <code>/api</code> with a <code>mode</code> parameter:</p>
+      <table>
+        <tr><th><code>mode</code></th><th>Extra params</th><th>Effect</th></tr>
+        <tr><td><code>queue</code></td><td>—</td><td>Full queue status</td></tr>
+        <tr><td><code>history</code></td><td><code>limit=N</code></td><td>Completed downloads</td></tr>
+        <tr><td><code>pause</code></td><td>—</td><td>Pause all downloads</td></tr>
+        <tr><td><code>resume</code></td><td>—</td><td>Resume all downloads</td></tr>
+        <tr><td><code>queue</code></td><td><code>name=delete&value=NZO_ID</code></td><td>Delete queue item</td></tr>
+        <tr><td><code>retry</code></td><td><code>value=NZO_ID</code></td><td>Retry failed job</td></tr>
+        <tr><td><code>config</code></td><td><code>name=speedlimit&value=N</code></td><td>Set speed limit (KB/s)</td></tr>
+        <tr><td><code>addurl</code></td><td><code>name=URL</code></td><td>Add NZB from URL</td></tr>
+        <tr><td><code>addlocalfile</code></td><td><code>name=PATH</code></td><td>Add local NZB file</td></tr>
+      </table>
+
+      <div class="callout warn"><p><strong>CORS:</strong> SABnzbd blocks cross-origin requests by default. Add <code>inet_exposure = 4</code> to <code>sabnzbd.ini</code> and configure Nginx to proxy + add CORS headers.</p></div>
+    </section>
+
+    <!-- ── EXTENDING APIS ────────────────────────────────────────────────── -->
+    <section class="content-section" id="extending-apis">
+      <h2>Adding New API Panels</h2>
+      <p>Adding a new native API panel (e.g. Prowlarr, Lidarr, Jellyfin) follows this pattern:</p>
+
+      <h3>1. Add to API config</h3>
+      <pre><code><span class="comment">// In MediaAPIPanels.jsx — loadConfig() default object:</span>
+{
+  radarr:   { url: <span class="string">'http://nas.local:7878'</span>, apiKey: <span class="string">''</span> },
+  sonarr:   { url: <span class="string">'http://nas.local:8989'</span>, apiKey: <span class="string">''</span> },
+  sabnzbd:  { url: <span class="string">'http://nas.local:8080'</span>, apiKey: <span class="string">''</span> },
+  jellyfin: { url: <span class="string">'http://nas.local:8096'</span>, apiKey: <span class="string">''</span> }, <span class="comment">// ← add here</span>
+}</code></pre>
+
+      <h3>2. Create the panel component</h3>
+      <pre><code><span class="keyword">function</span> <span class="fn">JellyfinPanel</span>({ onOpenWebUI }) {
+  <span class="keyword">const</span> [cfg] = useState(loadConfig);
+  <span class="keyword">const</span> hasKey = !!cfg.jellyfin.apiKey;
+  <span class="comment">// ... implement panel with tabs, data fetching, etc.</span>
+  window.JellyfinPanel = JellyfinPanel;
+}</code></pre>
+
+      <h3>3. Register in WIN_DEFAULTS (NASTerminal.jsx)</h3>
+      <pre><code>jellyfin: { w: <span class="num">820</span>, h: <span class="num">580</span>, title: <span class="string">'[JELLYFIN]'</span> },</code></pre>
+
+      <h3>4. Add to renderWindowContent switch</h3>
+      <pre><code><span class="keyword">case</span> <span class="string">'jellyfin'</span>:
+  <span class="keyword">return</span> &lt;JellyfinPanel onOpenWebUI={() =&gt; spawnWindow(<span class="string">'webapp'</span>, {
+    name: <span class="string">'Jellyfin'</span>, url: loadConfig().jellyfin.url
+  })} /&gt;;</code></pre>
+
+      <h3>5. Add to AppLauncher MEDIA_APPS</h3>
+      <pre><code>{ id: <span class="string">'jellyfin'</span>, name: <span class="string">'Jellyfin'</span>, desc: <span class="string">'Media Server'</span>, icon: <span class="string">'[JF]'</span>, cat: <span class="string">'MEDIA'</span>, url: <span class="string">'http://nas.local:8096'</span> }</code></pre>
+    </section>
+
+    <!-- ── SELF-HOST ──────────────────────────────────────────────────────── -->
+    <section class="content-section" id="self-host">
+      <h2>Self-Hosting</h2>
+      <p>NAS_TERMINAL is a static site — serve it with any HTTP server:</p>
+      <pre><code><span class="comment"># Python (simplest)</span>
+cd /opt/nas-terminal
+python3 -m http.server 8765
+
+<span class="comment"># Node (better for production)</span>
+npx serve . -p 8765
+
+<span class="comment"># nginx (recommended — see next section)</span></code></pre>
+
+      <h3>Access from LAN</h3>
+      <pre><code><span class="comment"># On NAS, find IP</span>
+ip addr show eth0 | grep 'inet '
+<span class="comment"># → inet 192.168.1.100/24</span>
+
+<span class="comment"># From any device on your LAN:</span>
+http://192.168.1.100:8765
+<span class="comment"># or with a local DNS entry:</span>
+http://nas.local:8765</code></pre>
+    </section>
+
+    <!-- ── NGINX ─────────────────────────────────────────────────────────── -->
+    <section class="content-section" id="nginx-config">
+      <h2>Nginx Configuration</h2>
+      <p>A recommended nginx config that serves NAS_TERMINAL, proxies the API services, adds CORS headers for iframes, and upgrades WebSocket connections for ttyd:</p>
+      <pre><code>server {
+    listen 80;
+    server_name nas.local;
+
+    <span class="comment"># NAS Terminal static files</span>
+    location / {
+        root /opt/nas-terminal;
+        index "NAS Terminal.html";
+        try_files $uri $uri/ /NAS Terminal.html;
+    }
+
+    <span class="comment"># ttyd WebSocket terminal</span>
+    location /terminal/ {
+        proxy_pass http://127.0.0.1:7681/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 43200;
+    }
+
+    <span class="comment"># Radarr — strip X-Frame-Options so iframe works</span>
+    location /radarr/ {
+        proxy_pass http://127.0.0.1:7878/radarr/;
+        proxy_hide_header X-Frame-Options;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        proxy_set_header Host $host;
+    }
+
+    <span class="comment"># Sonarr</span>
+    location /sonarr/ {
+        proxy_pass http://127.0.0.1:8989/sonarr/;
+        proxy_hide_header X-Frame-Options;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+    }
+
+    <span class="comment"># SABnzbd — add CORS for API calls</span>
+    location /sabnzbd/ {
+        proxy_pass http://127.0.0.1:8080/sabnzbd/;
+        proxy_hide_header X-Frame-Options;
+        add_header Access-Control-Allow-Origin "*" always;
+        add_header Access-Control-Allow-Methods "GET, POST" always;
+    }
+
+    <span class="comment"># Emby / Jellyfin</span>
+    location /emby/ {
+        proxy_pass http://127.0.0.1:8096/;
+        proxy_hide_header X-Frame-Options;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}</code></pre>
+    </section>
+
+    <!-- ── DOCKER ────────────────────────────────────────────────────────── -->
+    <section class="content-section" id="docker-deploy">
+      <h2>Docker Deployment</h2>
+      <pre><code><span class="comment"># docker-compose.yml</span>
+version: <span class="string">'3.8'</span>
+services:
+  nas-terminal:
+    image: nginx:alpine
+    container_name: nas-terminal
+    ports:
+      - <span class="string">"8765:80"</span>
+    volumes:
+      - /opt/nas-terminal:/usr/share/nginx/html:ro
+      - /opt/nas-terminal/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    restart: unless-stopped
+    networks:
+      - nas-net
+
+  ttyd:
+    image: tsl0922/ttyd
+    container_name: ttyd
+    command: -p 7681 bash
+    ports:
+      - <span class="string">"7681:7681"</span>
+    volumes:
+      - /:/host:ro           <span class="comment"># optional: NAS root read-only</span>
+    restart: unless-stopped
+    networks:
+      - nas-net
+
+networks:
+  nas-net:
+    external: true</code></pre>
+    </section>
+
+    <!-- ── SECURITY ──────────────────────────────────────────────────────── -->
+    <section class="content-section" id="security">
+      <h2>Security Considerations</h2>
+      <div class="callout warn"><p><strong>NAS_TERMINAL runs as root by default in demo mode.</strong> Before exposing it outside your LAN, implement proper authentication.</p></div>
+
+      <h3>Authentication options</h3>
+      <ul>
+        <li><strong>Nginx basic auth</strong> — Quick: <code>htpasswd -c /etc/nginx/.htpasswd gene</code> then add <code>auth_basic</code> to nginx config</li>
+        <li><strong>Authelia / Authentik</strong> — Full SSO with 2FA, forward-auth proxy</li>
+        <li><strong>Cloudflare Access</strong> — Zero-trust with email OTP, no port forwarding needed</li>
+        <li><strong>WireGuard VPN</strong> — Only expose on VPN interface; access from anywhere securely</li>
+      </ul>
+
+      <h3>Replace the demo login</h3>
+      <pre><code><span class="comment">// In NASTerminal.jsx — handleLogin function, replace VALID_CREDS check with:</span>
+<span class="keyword">const</span> <span class="fn">handleLogin</span> = <span class="keyword">async</span> (user, pass, host) => {
+  <span class="keyword">const</span> res = <span class="keyword">await</span> fetch(<span class="string">'/api/auth/login'</span>, {
+    method: <span class="string">'POST'</span>,
+    headers: { <span class="string">'Content-Type'</span>: <span class="string">'application/json'</span> },
+    body: JSON.stringify({ user, pass })
+  });
+  <span class="keyword">if</span> (res.ok) {
+    <span class="keyword">const</span> { token } = <span class="keyword">await</span> res.json();
+    sessionStorage.setItem(<span class="string">'nas_auth'</span>, JSON.stringify({ user, host, token }));
+    setAuth({ user, host });
+  } <span class="keyword">else</span> {
+    setError(<span class="string">'> AUTH FAILED'</span>);
+  }
+};</code></pre>
+
+      <h3>API key security</h3>
+      <p>API keys are stored in <code>localStorage</code>. For a shared device, consider storing them server-side and proxying API calls through a backend that injects the key, so keys are never visible in the browser.</p>
+    </section>
+
+    <!-- ── THEMING ───────────────────────────────────────────────────────── -->
+    <section class="content-section" id="theming">
+      <h2>Theming</h2>
+      <p>The in-app Settings panel (open from <code>[LAUNCHER]</code> → <code>[API Config]</code> → Settings, or via the dock) provides live theming. Settings persist to <code>localStorage</code> and are re-applied on every page load.</p>
+      <p>To add a custom preset theme, add an entry to the <code>PRESET_THEMES</code> array in <code>SettingsPanel.jsx</code>:</p>
+      <pre><code>{
+  id: <span class="string">'my-theme'</span>,
+  name: <span class="string">'My Theme'</span>,
+  desc: <span class="string">'Custom phosphor'</span>,
+  vars: {
+    <span class="string">'--neon-green'</span>:    <span class="string">'#ff6600'</span>,
+    <span class="string">'--neon-cyan'</span>:     <span class="string">'#ffaa00'</span>,
+    <span class="string">'--neon-purple'</span>:   <span class="string">'#cc3300'</span>,
+    <span class="string">'--text-primary'</span>:  <span class="string">'#ffe0c0'</span>,
+    <span class="string">'--bg-glass'</span>:      <span class="string">'rgba(20,8,0,0.85)'</span>,
+    <span class="string">'--border-green-30'</span>: <span class="string">'rgba(255,102,0,0.3)'</span>,
+  }
+}</code></pre>
+    </section>
+
+    <!-- ── ADDING PANELS ─────────────────────────────────────────────────── -->
+    <section class="content-section" id="adding-panels">
+      <h2>Adding Custom System Panels</h2>
+      <p>System panels (file manager, sysmon, etc.) live in <code>SystemPanels.jsx</code>. To add a new one:</p>
+      <ol>
+        <li>Create the React component: <code>function MyPanel() { ... }</code></li>
+        <li>Export: <code>window.MyPanel = MyPanel;</code></li>
+        <li>Add to <code>WIN_DEFAULTS</code> in <code>NASTerminal.jsx</code></li>
+        <li>Add a <code>case 'mypanel':</code> in <code>renderWindowContent</code></li>
+        <li>Add to <code>PANEL_APPS</code> in <code>AppLauncher.jsx</code></li>
+      </ol>
+    </section>
+
+    <!-- ── ADDING WEBAPPS ────────────────────────────────────────────────── -->
+    <section class="content-section" id="adding-webapps">
+      <h2>Adding Webapps</h2>
+      <p>Webapps open in an iframe window. Add them via the in-app launcher (<code>[+ ADD WEBAPP]</code> at the bottom of the launcher overlay) or directly in <code>AppLauncher.jsx</code>:</p>
+      <pre><code><span class="comment">// In AppLauncher.jsx — DEFAULT_APPS array:</span>
+{
+  id: <span class="string">'grafana'</span>,
+  name: <span class="string">'Grafana'</span>,
+  desc: <span class="string">'Metrics Dashboard'</span>,
+  url: <span class="string">'http://nas.local:3000'</span>,
+  icon: <span class="string">'[GR]'</span>,
+  cat: <span class="string">'ADMIN'</span>
+}</code></pre>
+      <div class="callout info"><p><strong>iframe blocking:</strong> Many services set <code>X-Frame-Options: DENY</code>. The <code>[↗]</code> button in every webapp window opens the URL in a real browser tab as a fallback. Configure nginx to strip and reset <code>X-Frame-Options</code> for services you want to embed.</p></div>
+    </section>
+
+    <!-- Footer -->
+    <div style="margin-top: 60px; padding-top: 20px; border-top: 1px dashed rgba(0,255,0,0.2); font-size: 0.72rem; color: var(--text-dim); letter-spacing: 1px; display: flex; justify-content: space-between;">
+      <span>&gt; NAS_TERMINAL Developer Guide v1.0 — Gene Hively Cyber-Noir Design System</span>
+      <a href="NAS Terminal.html" style="color: var(--neon-cyan);">[← BACK TO APP]</a>
+    </div>
+  </main>
+
+</div>
+
+<script>
+  // Highlight active sidebar link on scroll
+  const links = document.querySelectorAll('.sidebar-link');
+  const sections = document.querySelectorAll('.content-section');
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        links.forEach(l => l.classList.remove('active'));
+        const link = document.querySelector(`.sidebar-link[href="#${e.target.id}"]`);
+        if (link) link.classList.add('active');
+      }
+    });
+  }, { threshold: 0.3 });
+  sections.forEach(s => observer.observe(s));
+
+  // Smooth scroll
+  links.forEach(link => {
+    link.addEventListener('click', e => {
+      e.preventDefault();
+      const target = document.querySelector(link.getAttribute('href'));
+      if (target) target.scrollIntoView({ behavior: 'smooth' });
+    });
+  });
+</script>
+</body>
+</html>

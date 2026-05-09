@@ -1,0 +1,218 @@
+/* ============================================================
+   Gene Hively Cyber-Noir — Colors & Type
+   Source: ghively/resumesite (src/index.css + component CSS)
+   Aesthetic: cyber-noir terminal / tiling window manager,
+   green CRT phosphor + violet accent + cyan boot text
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+:root {
+  /* ---------- Brand / surface ---------- */
+  --bg-dark:        #050505;   /* near-black CRT backplate */
+  --bg-glass:       rgba(10, 10, 15, 0.75);   /* terminal-window fill */
+  --bg-glass-strong:rgba(10, 10, 15, 0.85);   /* mobile fullscreen app */
+  --bg-deep:        #000800;   /* dock */
+  --bg-overlay:     rgba(0, 0, 0, 0.4);   /* readability backplate (.bio-content) */
+  --bg-overlay-2:   rgba(0, 0, 0, 0.6);   /* project-node */
+  --bg-overlay-3:   rgba(0, 0, 0, 0.8);   /* terminal-bar / contact-terminal */
+  --bg-tint-green:  rgba(0, 20, 0, 0.4);  /* deck app icon, mobile boot */
+  --bg-tint-purple: rgba(139, 92, 246, 0.2); /* log-header */
+
+  /* ---------- Phosphor palette (verbatim from source) ---------- */
+  --neon-green:  #00ff00;   /* alias #0f0 — primary phosphor */
+  --neon-purple: #8000ff;   /* "deep violet" accent */
+  --neon-cyan:   #00f3ff;   /* boot text / titles */
+
+  /* extended phosphor steps (derived for swatches) */
+  --phosphor-50:  #ccffcc;   /* same as --text-primary */
+  --phosphor-200: #66ff66;
+  --phosphor-500: #00ff00;
+  --phosphor-700: #00cc00;
+  --phosphor-900: #003300;   /* dock border */
+  --phosphor-950: #001100;   /* status-bar fill */
+
+  /* rainbow conic stops (active-window border) */
+  --rainbow-1: #ff0000;
+  --rainbow-2: #ffff00;
+  --rainbow-3: #00ff00;
+  --rainbow-4: #00ffff;
+  --rainbow-5: #0000ff;
+  --rainbow-6: #ff00ff;
+
+  /* macOS-style window dots */
+  --dot-red:    #ff5f56;
+  --dot-yellow: #ffbd2e;
+  --dot-green:  #27c93f;
+
+  /* ---------- Text colors ---------- */
+  --text-primary: #ccffcc;            /* phosphor-tinted white */
+  --text-dim:     rgba(0, 255, 0, 0.6);
+  --text-mute:    #888;               /* sys-msg */
+  --text-soft:    #aaa;               /* node-header */
+  --text-on-dark: #eee;               /* bio-text body copy */
+  --text-on-phosphor: #000;           /* button hover (inverse) */
+
+  /* ---------- Borders ---------- */
+  --border-green-30: rgba(0, 255, 0, 0.3);
+  --border-green-20: rgba(0, 255, 0, 0.2);
+  --border-green-50: rgba(0, 255, 0, 0.5);
+  --border-purple:   var(--neon-purple);
+  --border-purple-30:rgba(139, 92, 246, 0.3);
+  --border-dashed:   1px dashed var(--text-dim);
+
+  /* ---------- Shadow / glow system ---------- */
+  --glow-green-sm:  0 0 5px var(--neon-green);
+  --glow-green-md:  0 0 10px var(--neon-green);
+  --glow-green-lg:  0 0 15px var(--neon-green);
+  --glow-purple-sm: 0 0 8px var(--neon-purple);
+  --glow-purple-md: 0 0 20px rgba(139, 92, 246, 0.1);
+  --glow-cyan-sm:   0 0 5px var(--neon-cyan);
+  --glow-cyan-md:   0 0 10px var(--neon-cyan);
+
+  /* terminal-window composite shadow */
+  --shadow-window:
+    0 0 20px rgba(0, 255, 0, 0.1),
+    0 0 40px rgba(139, 92, 246, 0.15),
+    inset 0 0 80px rgba(0, 0, 0, 0.8);
+  --shadow-window-active: 0 0 30px rgba(0, 255, 0, 0.2);
+
+  /* text bloom */
+  --bloom-green: 0 0 2px var(--neon-green), 0 0 10px var(--neon-green);
+  --bloom-cyan:  0 0 5px var(--neon-cyan);
+  --bloom-purple:0 0 8px var(--neon-purple);
+
+  /* ---------- Radii ---------- */
+  --radius-sm:  4px;     /* tags, scrollbar thumb, content panes */
+  --radius-md:  8px;     /* buttons, app icons */
+  --radius-lg:  10px;    /* deck home frame */
+  --radius-xl:  12px;    /* mobile fullscreen app */
+  /* CRT-bowed window: 2% horizontal / 5% vertical */
+  --radius-crt: 2% 2% 2% 2% / 5% 5% 5% 5%;
+
+  /* ---------- Spacing scale (derived from observed values) ---------- */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  10px;
+  --space-4:  15px;
+  --space-5:  16px;
+  --space-6:  20px;
+  --space-7:  24px;
+  --space-8:  30px;
+  --space-9:  40px;
+  --space-10: 60px;
+
+  /* ---------- Type system ---------- */
+  /* Source uses 'Courier New', Courier, monospace.
+     We provide it AND web-font fallbacks for higher-fidelity CRT feel. */
+  --font-mono:    'Courier New', Courier, monospace;
+  --font-display: 'VT323', 'Share Tech Mono', 'Courier New', monospace; /* boot/titles */
+  --font-system:  'JetBrains Mono', 'Share Tech Mono', 'Courier New', monospace;
+
+  /* sizes (based on observed rem values across components) */
+  --fs-xs:   0.7rem;   /* deck-app-icon label */
+  --fs-sm:   0.8rem;   /* mobile boot, tags */
+  --fs-md:   0.9rem;   /* terminal-title, node-header */
+  --fs-base: 1rem;     /* body, app-name */
+  --fs-lg:   1.1rem;   /* cmd-btn, h3, cmd-line */
+  --fs-xl:   1.2rem;   /* terminal-boot text */
+  --fs-2xl:  1.5rem;   /* terminal-header (h2) */
+
+  /* line-heights */
+  --lh-tight: 1.4;
+  --lh-base:  1.5;
+  --lh-loose: 1.8;     /* bio-text */
+
+  /* letter-spacing */
+  --ls-tight: 1px;
+  --ls-wide:  2px;     /* terminal-title */
+
+  /* ---------- Motion ---------- */
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --dur-fast:  0.2s;
+  --dur-base:  0.3s;
+  --dur-slow:  0.4s;
+  --dur-rotation: 2s;  /* rainbow border rotation */
+  --dur-flicker:  0.15s;
+  --dur-blink:    1s;
+  --dur-float:    6s;
+}
+
+/* ============================================================
+   Semantic typography
+   ============================================================ */
+
+body {
+  background: var(--bg-dark);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--fs-base);
+  line-height: var(--lh-base);
+}
+
+h1, h2, h3, a {
+  text-shadow: var(--bloom-green);
+}
+
+/* terminal-header: section title pattern (cyan, purple underline) */
+.terminal-header,
+h2 {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xl);
+  color: var(--neon-cyan);
+  text-shadow: var(--bloom-cyan);
+  border-bottom: 2px solid var(--neon-purple);
+  padding-right: 2rem;
+  margin-bottom: 2rem;
+  display: inline-block;
+}
+
+h3 {
+  font-size: var(--fs-lg);
+  color: var(--neon-cyan);
+  margin: 0 0 0.75rem;
+}
+
+p, li {
+  font-size: var(--fs-base);
+  line-height: var(--lh-base);
+}
+
+code, pre, .mono {
+  font-family: var(--font-mono);
+}
+
+/* the universal CLI prompt symbol */
+.prompt {
+  color: var(--neon-purple);
+  margin-right: 10px;
+}
+
+/* command button (cmd-btn) */
+.cmd-btn {
+  font-family: var(--font-mono);
+  font-size: var(--fs-lg);
+  color: var(--neon-green);
+  border: 1px solid var(--neon-green);
+  background: rgba(0, 0, 0, 0.3);
+  padding: 8px 16px;
+  text-shadow: var(--glow-green-sm);
+  text-decoration: none;
+  cursor: pointer;
+  transition: all var(--dur-fast);
+}
+.cmd-btn:hover {
+  background: var(--neon-green);
+  color: #000;
+  box-shadow: var(--glow-green-lg);
+}
+
+/* blinking cursor block */
+.cursor-block {
+  animation: blink var(--dur-blink) step-end infinite;
+  color: var(--neon-purple);
+}
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0; }
+}
