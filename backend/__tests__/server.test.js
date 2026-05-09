@@ -102,16 +102,31 @@ test('POST /api/ai/chat streams SSE envelope from streamChat', async () => {
   expect(res.text).toContain('data: [DONE]');
 });
 
-test('POST /api/ai/chat surfaces upstream errors as a final error event', async () => {
+test('POST /api/ai/chat surfaces upstream errors as a final error event with a generic message (no upstream body echo)', async () => {
   ai.isConfigured.mockReturnValue(true);
-  ai.streamChat.mockImplementation(async function* () { throw new Error('boom'); });
+  ai.streamChat.mockImplementation(async function* () {
+    throw Object.assign(new Error('upstream HTTP 500'), { name: 'UpstreamError', status: 500 });
+  });
   const res = await request(app)
     .post('/api/ai/chat')
     .set('x-api-key', testConfig.apiKey)
     .send({ messages: [{ role: 'user', content: 'hi' }] });
   expect(res.status).toBe(200);
-  expect(res.text).toContain('"error":"boom"');
+  expect(res.text).toContain('"error":"AI temporarily unavailable"');
+  expect(res.text).not.toContain('upstream HTTP 500');
   expect(res.text).toContain('data: [DONE]');
+});
+
+test('POST /api/ai/chat maps upstream 401/403 to "AI auth failed"', async () => {
+  ai.isConfigured.mockReturnValue(true);
+  ai.streamChat.mockImplementation(async function* () {
+    throw Object.assign(new Error('upstream HTTP 401'), { name: 'UpstreamError', status: 401 });
+  });
+  const res = await request(app)
+    .post('/api/ai/chat')
+    .set('x-api-key', testConfig.apiKey)
+    .send({ messages: [{ role: 'user', content: 'hi' }] });
+  expect(res.text).toContain('"error":"AI auth failed"');
 });
 
 test('POST /api/ai/shell returns parsed object', async () => {
@@ -125,7 +140,7 @@ test('POST /api/ai/shell returns parsed object', async () => {
   expect(res.body).toEqual({ command: 'ls', explanation: 'x', danger: 'safe' });
 });
 
-test('POST /api/ai/shell maps upstream errors to 502', async () => {
+test('POST /api/ai/shell maps malformed upstream output to 502 with generic message', async () => {
   ai.isConfigured.mockReturnValue(true);
   ai.suggestShell.mockRejectedValue(new Error('AI returned malformed shell suggestion'));
   const res = await request(app)
@@ -133,7 +148,34 @@ test('POST /api/ai/shell maps upstream errors to 502', async () => {
     .set('x-api-key', testConfig.apiKey)
     .send({ intent: 'list files' });
   expect(res.status).toBe(502);
-  expect(res.body.error).toMatch(/malformed/);
+  expect(res.body).toEqual({ error: 'AI returned malformed response' });
+});
+
+test('POST /api/ai/shell maps upstream 429 to 429 with retry-after passthrough', async () => {
+  ai.isConfigured.mockReturnValue(true);
+  ai.suggestShell.mockRejectedValue(
+    Object.assign(new Error('upstream HTTP 429'), { name: 'UpstreamError', status: 429, retryAfter: '7' })
+  );
+  const res = await request(app)
+    .post('/api/ai/shell')
+    .set('x-api-key', testConfig.apiKey)
+    .send({ intent: 'list files' });
+  expect(res.status).toBe(429);
+  expect(res.headers['retry-after']).toBe('7');
+  expect(res.body).toEqual({ error: 'AI rate limited' });
+});
+
+test('POST /api/ai/shell maps upstream 401/403 to 502 "AI auth failed" without echoing the upstream body', async () => {
+  ai.isConfigured.mockReturnValue(true);
+  ai.suggestShell.mockRejectedValue(
+    Object.assign(new Error('upstream HTTP 401'), { name: 'UpstreamError', status: 401 })
+  );
+  const res = await request(app)
+    .post('/api/ai/shell')
+    .set('x-api-key', testConfig.apiKey)
+    .send({ intent: 'list files' });
+  expect(res.status).toBe(502);
+  expect(res.body).toEqual({ error: 'AI auth failed' });
 });
 
 test('POST /api/ai/shell 400s on missing intent', async () => {
