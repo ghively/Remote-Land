@@ -116,27 +116,56 @@ function LoginScreen({ onLogin }) {
 
 // ── Status Bar — Waybar-inspired ──────────────────────────────────────────────
 function StatusBar({ user, host, windows, onOpenLauncher, onLogout, onToggleTile, tileMode }) {
+  const { api, status, isDemo } = useBackend();
   const [stats, setStats] = useState({ cpu: 14, ram: 42, uptime: '42d 7h', time: '', date: '' });
+  const [live, setLive] = useState(null);
   const [activeWs, setActiveWs] = useState(1);
 
+  // Cosmetic clock — runs in every mode.
   useEffect(() => {
     const tick = () => {
       const now = new Date();
       const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
       const date = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-      setStats(s => ({
-        cpu: Math.max(2, Math.min(98, s.cpu + (Math.random()*4-2))),
-        ram: Math.max(20, Math.min(95, s.ram + (Math.random()*1-0.5))),
-        uptime: s.uptime, time, date,
-      }));
+      setStats(s => ({ ...s, time, date }));
     };
     tick();
     const iv = setInterval(tick, 1000);
     return () => clearInterval(iv);
   }, []);
 
-  const cpuWarn = stats.cpu > 85 ? 'crit' : stats.cpu > 65 ? 'warn' : '';
-  const ramWarn = stats.ram > 85 ? 'crit' : stats.ram > 65 ? 'warn' : '';
+  // Demo random walk — only when no real backend.
+  useEffect(() => {
+    if (!isDemo) return;
+    const iv = setInterval(() => {
+      setStats(s => ({
+        ...s,
+        cpu: Math.max(2, Math.min(98, s.cpu + (Math.random()*4-2))),
+        ram: Math.max(20, Math.min(95, s.ram + (Math.random()*1-0.5))),
+      }));
+    }, 1000);
+    return () => clearInterval(iv);
+  }, [isDemo]);
+
+  // Real polling — only while backend is online.
+  useEffect(() => {
+    if (isDemo || status !== 'online' || !api) return;
+    let alive = true;
+    const tick = async () => {
+      try {
+        const s = await api.systemStats();
+        if (alive) setLive(s);
+      } catch (_) { /* heartbeat owns the offline indicator */ }
+    };
+    tick();
+    const iv = setInterval(tick, 2000);
+    return () => { alive = false; clearInterval(iv); };
+  }, [api, status, isDemo]);
+
+  const cpuPct = isDemo ? stats.cpu : (live ? live.cpu.percent : null);
+  const ramPct = isDemo ? stats.ram : (live ? Math.round(100 * live.ram.used / live.ram.total) : null);
+  const cpuWarn = cpuPct == null ? '' : cpuPct > 85 ? 'crit' : cpuPct > 65 ? 'warn' : '';
+  const ramWarn = ramPct == null ? '' : ramPct > 85 ? 'crit' : ramPct > 65 ? 'warn' : '';
 
   // Workspace numbers — matches Hyprland workspaces 1-9
   const workspaces = [1,2,3,4,5,6,7,8,9];
@@ -174,13 +203,27 @@ function StatusBar({ user, host, windows, onOpenLauncher, onLogout, onToggleTile
 
       {/* Right — system stats + controls (like Waybar right modules) */}
       <div className="wb-right">
+        {isDemo && (
+          <div className="wb-module" style={{ color: 'var(--neon-purple)', textShadow: 'var(--bloom-purple, 0 0 4px var(--neon-purple))', letterSpacing: 2 }}>
+            [DEMO]
+          </div>
+        )}
+        {!isDemo && status === 'offline' && (
+          <div className="wb-module" style={{ color: 'var(--neon-cyan)', textShadow: 'var(--bloom-cyan)', letterSpacing: 2 }}>
+            [OFFLINE]
+          </div>
+        )}
         <div className="wb-module cpu">
           <span className="wb-label">CPU</span>
-          <span className={`wb-val${cpuWarn ? ' ' + cpuWarn : ''}`}>{stats.cpu.toFixed(0)}%</span>
+          <span className={`wb-val${cpuWarn ? ' ' + cpuWarn : ''}`}>
+            {cpuPct == null ? '--' : `${cpuPct.toFixed(0)}%`}
+          </span>
         </div>
         <div className="wb-module ram">
           <span className="wb-label">RAM</span>
-          <span className={`wb-val${ramWarn ? ' ' + ramWarn : ''}`}>{stats.ram.toFixed(0)}%</span>
+          <span className={`wb-val${ramWarn ? ' ' + ramWarn : ''}`}>
+            {ramPct == null ? '--' : `${ramPct.toFixed(0)}%`}
+          </span>
         </div>
         <div className="wb-module uptime">
           <span className="wb-label">UP</span>
