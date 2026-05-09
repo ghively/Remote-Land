@@ -74,7 +74,33 @@ All routes require `x-api-key` header except `/api/health`.
 | GET | /api/media/emby | Emby stats |
 | GET | /api/media/radarr | Radarr queue + upcoming |
 | GET | /api/media/sonarr | Sonarr queue + upcoming |
+| POST | /api/ai/chat | SSE-streamed chat completion |
+| POST | /api/ai/shell | NL→shell command suggestion |
+| POST | /api/ai/analyze-logs | SSE-streamed summary of pasted log lines |
 | WS | /terminal?token=KEY | Interactive bash session |
+
+## AI features
+
+Set `ai.baseUrl` and `ai.apiKey` in `config.json` to enable the chat panel,
+NL→shell launcher mode, and log analyzer. The backend talks to any
+OpenAI-compatible Chat Completions endpoint.
+
+| Provider                       | `baseUrl`                                        |
+|--------------------------------|---------------------------------------------------|
+| OpenAI                         | `https://api.openai.com/v1`                       |
+| OpenRouter                     | `https://openrouter.ai/api/v1`                    |
+| Groq                           | `https://api.groq.com/openai/v1`                  |
+| Together                       | `https://api.together.xyz/v1`                     |
+| Ollama (local)                 | `http://localhost:11434/v1`                       |
+| LM Studio (local)              | `http://localhost:1234/v1`                        |
+| llama.cpp `server` (local)     | `http://localhost:8080/v1`                        |
+| vLLM (local)                   | `http://localhost:8000/v1`                        |
+
+Local servers (Ollama, LM Studio, llama.cpp) typically don't need an `apiKey`
+— leave it blank. AI is treated as enabled whenever `apiKey` *or* `baseUrl`
+is set. Per-feature model overrides: `chatModel`, `shellModel`, `logModel`.
+
+`GET /api/health` exposes `ai: "configured" | "disabled"` (no auth).
 
 ## Running tests
 
