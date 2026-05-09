@@ -1,0 +1,77 @@
+<h2>Design Section 1: Directory Structure</h2>
+<p class="subtitle">Before → After reorganization (Option B)</p>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">BEFORE (current)</div>
+    <div class="mockup-body">
+      <pre style="font-size:0.82rem;line-height:1.9;margin:0">
+<span style="color:#888">C:\Git\UI\</span>
+├── <span style="color:#f8c555">.claude/</span>
+├── <span style="color:#f8c555">.git/</span>
+├── <span style="color:#f8c555">project/</span>          <span style="color:#888">← everything mixed together</span>
+│   ├── assets/
+│   ├── kitty/
+│   ├── AppLauncher.jsx
+│   ├── BrowserPanel.jsx
+│   ├── colors_and_type.css
+│   ├── Developer Guide.html
+│   ├── MediaAPIPanels.jsx
+│   ├── MediaPanelsFull.jsx
+│   ├── NAS Terminal.html
+│   ├── NASTerminal.jsx
+│   ├── SettingsPanel.jsx
+│   ├── SystemPanels.jsx
+│   ├── TerminalPane.jsx
+│   ├── WindowManager.jsx
+│   └── wm-styles.css
+└── README.md             <span style="color:#888">← handoff instructions only</span>
+      </pre>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">AFTER (Option B)</div>
+    <div class="mockup-body">
+      <pre style="font-size:0.82rem;line-height:1.9;margin:0">
+<span style="color:#888">C:\Git\UI\</span>
+├── <span style="color:#f8c555">.claude/</span>
+├── <span style="color:#f8c555">.git/</span>
+├── <span style="color:#6be5a0">CLAUDE.md</span>             <span style="color:#888">← AI agent rulebook</span>
+├── <span style="color:#6be5a0">.gitignore</span>
+├── <span style="color:#6be5a0">README.md</span>             <span style="color:#888">← updated: project overview</span>
+├── <span style="color:#6be5a0">frontend/</span>             <span style="color:#888">← renamed from project/</span>
+│   ├── assets/
+│   ├── kitty/
+│   ├── AppLauncher.jsx
+│   ├── BrowserPanel.jsx
+│   ├── colors_and_type.css
+│   ├── Developer Guide.html
+│   ├── MediaAPIPanels.jsx
+│   ├── MediaPanelsFull.jsx
+│   ├── NAS Terminal.html   <span style="color:#888">← entry point</span>
+│   ├── NASTerminal.jsx
+│   ├── SettingsPanel.jsx
+│   ├── SystemPanels.jsx
+│   ├── TerminalPane.jsx
+│   ├── WindowManager.jsx
+│   └── wm-styles.css
+├── <span style="color:#6be5a0">backend/</span>              <span style="color:#888">← stub (Sub-project 2)</span>
+│   └── README.md
+└── <span style="color:#6be5a0">docs/</span>
+    └── superpowers/
+        └── specs/          <span style="color:#888">← design specs live here</span>
+      </pre>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:24px">
+  <h3>Key decisions in this structure</h3>
+  <ul>
+    <li><strong>frontend/</strong> — all prototype files move here, nothing inside changes. Open <code>frontend/NAS Terminal.html</code> in a browser to run it.</li>
+    <li><strong>backend/</strong> — empty stub with a README. Signals to every AI agent that a backend belongs here and is coming in Sub-project 2.</li>
+    <li><strong>docs/superpowers/specs/</strong> — this spec and all future specs land here.</li>
+    <li><strong>CLAUDE.md</strong> — at the root so every AI session picks it up automatically.</li>
+  </ul>
+</div>
