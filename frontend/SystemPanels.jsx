@@ -177,6 +177,7 @@ function SysBar({ label, value, max = 100 }) {
 }
 
 function SystemMonitor() {
+  const { api, isDemo, status } = useBackend();
   const [stats, setStats] = useState({
     cpu: [14.2, 22.5, 8.1, 18.7, 31.0, 9.4, 12.3, 26.1],
     ram: 42.1, swap: 0.0,
@@ -189,7 +190,9 @@ function SystemMonitor() {
   const [procs, setProcs] = useState(PROCS_BASE);
   const [sortBy, setSortBy] = useState('cpu');
 
+  // Demo mode random walk.
   useEffect(() => {
+    if (!isDemo) return;
     const iv = setInterval(() => {
       setStats(s => ({
         ...s,
@@ -208,7 +211,42 @@ function SystemMonitor() {
       })));
     }, 1500);
     return () => clearInterval(iv);
-  }, []);
+  }, [isDemo]);
+
+  // Live polling — system stats and process list.
+  useEffect(() => {
+    if (isDemo || status !== 'online' || !api) return;
+    let alive = true;
+    const tick = async () => {
+      try {
+        const [s, p] = await Promise.all([api.systemStats(), api.processes()]);
+        if (!alive) return;
+        const ramPct = s.ram && s.ram.total ? 100 * s.ram.used / s.ram.total : 0;
+        const rxKb = (s.network && s.network.rxBytesPerSec || 0) / 1024;
+        const txKb = (s.network && s.network.txBytesPerSec || 0) / 1024;
+        const diskPct = s.disk && s.disk.total ? 100 * s.disk.used / s.disk.total : 0;
+        setStats(prev => ({
+          ...prev,
+          cpu: [s.cpu ? s.cpu.percent : 0],
+          ram: ramPct,
+          net_rx: rxKb,
+          net_tx: txKb,
+          disk_read: diskPct,
+          disk_write: 0,
+        }));
+        setProcs(p.map(row => ({
+          pid:  row.pid,
+          user: row.user,
+          cpu:  Number(row.cpu)  || 0,
+          mem:  Number(row.mem)  || 0,
+          cmd:  row.cmd || '',
+        })));
+      } catch (_) { /* heartbeat handles offline */ }
+    };
+    tick();
+    const iv = setInterval(tick, 5000);
+    return () => { alive = false; clearInterval(iv); };
+  }, [api, isDemo, status]);
 
   const avgCpu = stats.cpu.reduce((a, b) => a + b, 0) / stats.cpu.length;
   const sortedProcs = [...procs].sort((a, b) => b[sortBy] - a[sortBy]);
