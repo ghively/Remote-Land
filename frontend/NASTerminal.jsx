@@ -423,6 +423,7 @@ const WIN_DEFAULTS = {
   sabnzbd:   { w: 780, h: 540, title: '[SABNZBD]' },
   settings:   { w: 600, h: 560, title: 'SETTINGS' },
   browser:    { w: 1000, h: 640, title: 'WEB_BROWSER' },
+  aichat:     { w: 600, h: 540, title: '[AI_CHAT]' },
 };
 
 function WMDesktop({ user, host, onLogout }) {
@@ -608,6 +609,7 @@ function WMDesktop({ user, host, onLogout }) {
       case 'sonarr':    return <SonarrPanel  onOpenWebUI={() => { spawnWindow('webapp', { name: 'Sonarr',  url: (loadConfig().sonarr.url  || 'http://nas.local:8989') }); notify('> OPENING SONARR WEB UI', 'ok'); }} />;
       case 'sabnzbd':   return <SABnzbdPanel onOpenWebUI={() => { spawnWindow('webapp', { name: 'SABnzbd', url: (loadConfig().sabnzbd.url || 'http://nas.local:8080') }); notify('> OPENING SABNZBD WEB UI', 'ok'); }} />;
       case 'apicfg':    return <ApiConfigPanel onSave={() => { notify('> API CONFIG SAVED', 'ok'); closeWindow(win.id); }} />;
+      case 'aichat':    return <AIChatPanel />;
       default: return null;
     }
   };
@@ -629,6 +631,7 @@ function WMDesktop({ user, host, onLogout }) {
       return;
     }
     if (app.id === 'apicfg') { spawnWindow('apicfg', app); notify('> OPENING API CONFIGURATION', 'ok'); return; }
+    if (app.id === 'aichat') { spawnWindow('aichat', app); notify('> OPENING AI CHAT', 'ok'); return; }
     if (app.url) { spawnWindow('webapp', app); }
     else { spawnWindow(app.id, app); }
     notify(`> LAUNCHING ${app.name.toUpperCase()}`, 'ok');
