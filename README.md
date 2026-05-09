@@ -2,15 +2,25 @@
 
 Cyber-noir Linux server management UI. A tiling window manager interface for managing a remote Linux server — CRT phosphor green, deep violet accents, Hyprland-style dwindle layout.
 
-## Running the UI
+## Quick Start
 
-No install. No build. Just open the file:
-
+**Local dev** — just open the file in a browser, no server needed:
 ```
 frontend/NAS Terminal.html
 ```
+Leave the API_KEY field blank for **demo mode** (mock data, no backend).
 
-Double-click it or drag it into Chrome, Firefox, or Edge. The boot sequence plays, then you hit the login screen. Leave the API_KEY field blank for **demo mode** (mock data, no backend); fill it in to connect to a running backend agent.
+**Remote access** — run the backend and open `http://your-server:3001`:
+```bash
+cd backend
+npm install --production
+cp config.example.json config.json
+# Edit config.json — set apiKey and any media/AI endpoints
+node server.js
+```
+Then visit `http://your-server:3001` in any browser. The frontend is served automatically.
+
+For a persistent deployment (systemd, reverse proxy), see [backend/README.md](backend/README.md).
 
 ## Project structure
 

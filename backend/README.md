@@ -1,8 +1,9 @@
 # NAS Terminal — Backend Agent
 
 Node.js service exposing REST + WebSocket endpoints for system stats,
-Docker management, media API proxy (Emby/Radarr/Sonarr), and a real
-bash terminal session.
+Docker management, media API proxy (Emby/Radarr/Sonarr), AI chat, and a
+real bash terminal session. **Also serves the frontend UI**, so the entire
+app is accessible at `http://your-server:3001`.
 
 **Port:** 3001 (configurable in `config.json`)
 
@@ -57,6 +58,36 @@ curl http://localhost:3001/api/health
 ```bash
 sudo journalctl -u nas-terminal -f
 ```
+
+## Remote Access
+
+The backend serves the frontend UI automatically. Once running, open
+`http://your-server:3001` in any browser — no separate web server needed.
+
+For HTTPS or a custom domain, put nginx (or Caddy) in front:
+
+```nginx
+# nginx example — proxy to NAS Terminal
+server {
+    listen 443 ssl;
+    server_name terminal.yourdomain.com;
+
+    ssl_certificate     /path/to/cert.pem;
+    ssl_certificate_key /path/to/key.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";   # WebSocket
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+
+The WebSocket endpoint (`/terminal`) requires the `upgrade` headers shown
+above to work through a reverse proxy.
 
 ## API
 

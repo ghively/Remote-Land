@@ -15,8 +15,13 @@ AI agent rulebook. Read this before touching any file in this repo.
 ## How to run
 
 ```
-# Just open the file — no server, no install, no build
+# Local dev — just open the file, no server, no install, no build
 frontend/NAS Terminal.html   ← double-click or drag into Chrome/Firefox/Edge
+
+# Remote access — backend serves the frontend at http://host:port
+cd backend && npm install --production
+cp config.example.json config.json   # set apiKey, media URLs, AI config
+node server.js                       # visit http://your-server:3001
 ```
 
 ---
