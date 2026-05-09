@@ -78,6 +78,18 @@ function createApp(config) {
   });
 
   // ── AI ──────────────────────────────────────────────────────────────────────
+  // Map an internal error to the public-facing message in the spec error table.
+  // Never echoes upstream body back to the client.
+  const aiErrorMessage = (err) => {
+    if (err && err.name === 'UpstreamError') {
+      if (err.status === 401 || err.status === 403) return 'AI auth failed';
+      if (err.status === 429) return 'AI rate limited';
+      return 'AI temporarily unavailable';
+    }
+    if (err && /malformed|no JSON/i.test(err.message)) return 'AI returned malformed response';
+    return 'AI temporarily unavailable';
+  };
+
   app.post('/api/ai/chat', auth, async (req, res) => {
     if (!ai.isConfigured(config)) return res.status(503).json({ error: 'AI not configured' });
     if (!Array.isArray(req.body.messages) || req.body.messages.length === 0) {
@@ -95,7 +107,7 @@ function createApp(config) {
         res.write(`data: ${JSON.stringify(event)}\n\n`);
       }
     } catch (err) {
-      res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+      res.write(`data: ${JSON.stringify({ error: aiErrorMessage(err) })}\n\n`);
     }
     res.write('data: [DONE]\n\n');
     res.end();
@@ -109,7 +121,11 @@ function createApp(config) {
     try {
       res.json(await ai.suggestShell(config, req.body.intent));
     } catch (err) {
-      res.status(502).json({ error: err.message });
+      if (err && err.name === 'UpstreamError' && err.status === 429) {
+        if (err.retryAfter) res.setHeader('retry-after', err.retryAfter);
+        return res.status(429).json({ error: 'AI rate limited' });
+      }
+      res.status(502).json({ error: aiErrorMessage(err) });
     }
   });
 
@@ -126,7 +142,7 @@ function createApp(config) {
         res.write(`data: ${JSON.stringify(event)}\n\n`);
       }
     } catch (err) {
-      res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+      res.write(`data: ${JSON.stringify({ error: aiErrorMessage(err) })}\n\n`);
     }
     res.write('data: [DONE]\n\n');
     res.end();

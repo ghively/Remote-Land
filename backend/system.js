@@ -97,11 +97,16 @@ async function getStats() {
 }
 
 async function getProcesses() {
+  // Pull the first 10 fixed columns then take the rest of the line as the
+  // full command (was previously $11 only, which truncated args at the first
+  // space and dropped data the spec promises).
   const { stdout } = await execAsync(
-    "ps aux --sort=-%cpu | head -21 | tail -20 | awk '{print $1,$2,$3,$4,$11}'"
+    "ps aux --sort=-%cpu | head -21 | tail -20"
   );
   return stdout.trim().split('\n').map(line => {
-    const [user, pid, cpu, mem, cmd] = line.split(' ');
+    const parts = line.trim().split(/\s+/);
+    const [user, pid, cpu, mem] = parts;
+    const cmd = parts.slice(10).join(' ');
     return { user, pid: parseInt(pid), cpu: parseFloat(cpu), mem: parseFloat(mem), cmd };
   });
 }
