@@ -1,0 +1,7 @@
+# Brainstorming session files (visual companion server)
+.superpowers/
+
+# OS noise
+.DS_Store
+Thumbs.db
+desktop.ini
