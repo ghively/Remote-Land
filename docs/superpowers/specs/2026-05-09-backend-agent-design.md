@@ -163,7 +163,7 @@ Server → Client (binary frames): raw PTY output bytes.
 }
 ```
 
-**`config.json`** — copy of above with real values. Added to `.gitignore`. Never committed.
+**`config.json`** — copy of above with real values. Add `backend/config.json` to the repo-root `.gitignore` (scoped path, not bare `config.json`). Never committed.
 
 ---
 
@@ -278,4 +278,4 @@ sudo journalctl -u nas-terminal -f
 - [ ] Offline media service → `{ status: "offline" }`, server doesn't crash
 - [ ] `systemctl start nas-terminal` starts the service
 - [ ] `systemctl enable nas-terminal` survives reboot
-- [ ] `config.json` is gitignored — does not appear in `git status`
+- [ ] `backend/config.json` is gitignored (entry in repo-root `.gitignore`) — does not appear in `git status`
