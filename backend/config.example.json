@@ -2,6 +2,7 @@
   "apiKey": "change-me-to-a-long-random-string",
   "port": 3001,
   "shell": "/bin/bash",
+  "frontendDir": "",
   "media": {
     "emby":   { "url": "http://localhost:8096", "apiKey": "" },
     "radarr": { "url": "http://localhost:7878", "apiKey": "" },

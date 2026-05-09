@@ -168,3 +168,26 @@ test('POST /api/ai/analyze-logs 400s on empty lines', async () => {
     .send({ lines: [] });
   expect(res.status).toBe(400);
 });
+
+// ── Static frontend ────────────────────────────────────────────────────────
+
+test('GET / serves the frontend HTML when present', async () => {
+  const res = await request(app).get('/');
+  expect(res.status).toBe(200);
+  expect(res.headers['content-type']).toMatch(/text\/html/);
+  expect(res.text).toMatch(/NAS_TERMINAL/);
+});
+
+test('GET /BackendContext.jsx serves with text/javascript content-type', async () => {
+  const res = await request(app).get('/BackendContext.jsx');
+  expect(res.status).toBe(200);
+  expect(res.headers['content-type']).toMatch(/text\/javascript/);
+  expect(res.text).toMatch(/BackendProvider/);
+});
+
+test('static middleware does not shadow /api routes', async () => {
+  ai.isConfigured.mockReturnValue(false);
+  const res = await request(app).get('/api/health');
+  expect(res.status).toBe(200);
+  expect(res.body).toEqual({ status: 'ok', ai: 'disabled' });
+});
