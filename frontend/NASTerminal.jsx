@@ -227,7 +227,7 @@ function StatusBar({ user, host, windows, onOpenLauncher, onLogout, onToggleTile
         </div>
         <div className="wb-module uptime">
           <span className="wb-label">UP</span>
-          <span className="wb-val">{stats.uptime}</span>
+          <span className="wb-val">{(!isDemo && live && live.uptime && live.uptime.formatted) || stats.uptime}</span>
         </div>
         <button className="wb-module btn" onClick={onToggleTile} title={tileMode ? 'Float mode (Super+Space)' : 'Tile mode (Super+Space)'} style={{ fontSize: 11 }}>
           {tileMode ? '⊞' : '⊟'}

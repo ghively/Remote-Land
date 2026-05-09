@@ -1,4 +1,4 @@
-const { parseCpuLine, parseMemInfo, parseNetDev } = require('../system');
+const { parseCpuLine, parseMemInfo, parseNetDev, formatUptime } = require('../system');
 
 test('parseCpuLine extracts busy and total from /proc/stat line', () => {
   // cpu  user nice system idle iowait irq softirq steal ...
@@ -23,6 +23,12 @@ test('parseMemInfo returns used RAM in bytes from /proc/meminfo', () => {
   expect(result.total).toBe(16384000 * 1024);
   // used = MemTotal - MemAvailable (correct modern kernel formula)
   expect(result.used).toBe((16384000 - 8192000) * 1024);
+});
+
+test('formatUptime renders days/hours/minutes correctly', () => {
+  expect(formatUptime(60)).toBe('1m');
+  expect(formatUptime(3661)).toBe('1h 1m');
+  expect(formatUptime(86400 * 2 + 3600 * 7)).toBe('2d 7h');
 });
 
 test('parseNetDev parses rx and tx bytes per interface', () => {
