@@ -259,21 +259,6 @@ input, textarea, select { font-family: var(--font-system); }
   transition: opacity 0.25s, filter 0.25s;
 }
 
-/* Floaty ambient container — wraps all windows */
-#workspace-inner {
-  width: 100%; height: 100%;
-  position: relative;
-  animation: workspace-float 6s ease-in-out infinite;
-}
-
-@keyframes workspace-float {
-  0%   { transform: translate(0px,  0px); }
-  25%  { transform: translate(1px, -2px); }
-  50%  { transform: translate(0px, -1px); }
-  75%  { transform: translate(-1px,-2px); }
-  100% { transform: translate(0px,  0px); }
-}
-
 /* ---------- No bottom dock — Hyprland has no taskbar ---------- */
 /* Window list shown in Rofi-style launcher instead */
 
@@ -518,28 +503,17 @@ input, textarea, select { font-family: var(--font-system); }
   border-radius: 15px;
   z-index: 0;
   pointer-events: none;
-  /* Default gradient shown immediately — rAF will animate it */
   background: conic-gradient(from 0deg, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000);
+  /* Mask to border-only so the gradient doesn't bleed through the glass panel */
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  padding: 3px;
   opacity: 0.25;
   transition: opacity 0.3s;
 }
 .wm-window.active .wm-ring {
   opacity: 1;
-}
-
-/* wm-inner: glass surface sits on top of the ring */
-.wm-inner {
-  position: absolute;
-  inset: 3px;   /* 3px gap so the ring bleeds outside */
-  border-radius: 9px;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  /* Lighter glass so background wallpaper shows through */
-  background: rgba(4, 8, 5, 0.72);
-  backdrop-filter: blur(12px);
-  z-index: 1;
-  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.4);
 }
 
 .wm-window.active {
@@ -552,7 +526,7 @@ input, textarea, select { font-family: var(--font-system); }
 
 .wm-window.minimized { display: none !important; }
 
-/* wm-inner: the actual glass surface — clips content, fills the border box */
+/* wm-inner: glass surface — sits above the masked ring border */
 .wm-inner {
   position: absolute;
   inset: 0;
@@ -560,7 +534,7 @@ input, textarea, select { font-family: var(--font-system); }
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  background: rgba(8, 12, 10, 0.88);
+  background: var(--bg-glass);
   backdrop-filter: blur(14px);
   z-index: 1;
   /* Subtle inner vignette for CRT depth */

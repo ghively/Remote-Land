@@ -52,6 +52,12 @@ const PRESET_THEMES = [
     desc: 'Neon purple retro',
     vars: { '--neon-green': '#cc44ff', '--neon-cyan': '#ff44cc', '--neon-purple': '#4444ff', '--text-primary': '#eeccff', '--bg-glass': 'rgba(10,5,20,0.75)', '--border-green-30': 'rgba(204,68,255,0.3)' }
   },
+  {
+    id: 'custom',
+    name: 'Custom',
+    desc: 'User-defined colors from pickers',
+    vars: {}
+  },
 ];
 
 const BG_PRESETS = [
@@ -160,11 +166,7 @@ function applySettings(s) {
   root.style.setProperty('--bg-glass', `rgba(4,8,5,${op})`);
   root.style.setProperty('--bg-glass-strong', `rgba(4,8,5,${Math.min(0.92, op + 0.08)})`);
 
-  // Also override wm-inner directly via injected style
-  const glassStyleId = 'nas-glass-override';
-  let glassEl = document.getElementById(glassStyleId);
-  if (!glassEl) { glassEl = document.createElement('style'); glassEl.id = glassStyleId; document.head.appendChild(glassEl); }
-  glassEl.textContent = `.wm-inner { background: rgba(4,8,5,${op}) !important; }`;
+  // wm-inner now uses var(--bg-glass) — no override needed
   // Font size
   body.style.fontSize = `${s.fontSize || 14}px`;
 
@@ -199,8 +201,8 @@ function applySettings(s) {
   const speed = s.rainbowSpeed || 2;
   const inactiveOp = (s.rainbowOpacityInactive || 25) / 100;
   rEl.textContent = `
-    .wm-window::before { opacity: ${inactiveOp}; }
-    .wm-window.active::before { opacity: 1; }
+    .wm-window .wm-ring { opacity: ${inactiveOp}; }
+    .wm-window.active .wm-ring { opacity: 1; }
   `;
   // Update JS driver speed
   if (window.__rainbowSetSpeed) window.__rainbowSetSpeed(speed);
@@ -343,9 +345,15 @@ function SettingsPanel({ onClose }) {
                   <div style={{ fontSize: '0.65rem', color: 'var(--text-dim)' }}>{c.keyHint}</div>
                 </div>
                 <input type="color"
-                  defaultValue="#00ff00"
+                  key={`${s.theme}-${c.var}`}
+                  defaultValue={PRESET_THEMES.find(t => t.id === s.theme)?.vars?.[c.var] || '#00ff00'}
                   onChange={e => {
-                    document.documentElement.style.setProperty(c.var, e.target.value);
+                    const val = e.target.value;
+                    const customTheme = PRESET_THEMES.find(t => t.id === 'custom');
+                    if (customTheme) {
+                      customTheme.vars[c.var] = val;
+                      set('theme', 'custom');
+                    }
                   }}
                   style={{ width: 40, height: 28, border: '1px solid rgba(0,255,0,0.3)', borderRadius: 3, background: 'transparent', cursor: 'pointer' }}
                 />
@@ -424,7 +432,6 @@ function SettingsPanel({ onClose }) {
         {activeSection === 'effects' && (
           <div>
             <div style={{ color: 'var(--neon-cyan)', fontSize: '0.75rem', letterSpacing: 2, marginBottom: 12, borderBottom: '1px solid rgba(0,243,255,0.2)', paddingBottom: 6 }}>CRT EFFECTS</div>
-            <ToggleRow label="CRT Scanlines" keyName="crtFlicker" desc="Horizontal scanline overlay on entire screen" />
             <ToggleRow label="Flicker Animation" keyName="crtFlicker" desc="Subtle opacity flicker on scanlines" />
             <ToggleRow label="Workspace Float" keyName="floatAnimation" desc="Gentle 1-2px ambient drift on desktop" />
 

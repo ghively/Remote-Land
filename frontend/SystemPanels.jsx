@@ -354,13 +354,14 @@ function LogViewer() {
   const bodyRef = useRef(null);
 
   useEffect(() => {
+    if (!isDemo) return;
     const iv = setInterval(() => {
       const d = new Date();
       const ts = `May  7 ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
       setLogs(l => [...l.slice(-199), makeLogLine(ts)]);
     }, 2200);
     return () => clearInterval(iv);
-  }, []);
+  }, [isDemo]);
 
   useEffect(() => {
     if (follow && bodyRef.current) {

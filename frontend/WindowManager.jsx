@@ -174,9 +174,9 @@ function useKeyboardWM({ onNewTerm, onLauncher, onClose, onMinimize, onCycleNext
       const shift = e.shiftKey;
       const key   = e.key;
 
-      // Skip if typing in an input/textarea
+      // Skip if typing in an input/textarea — but NOT xterm's hidden textarea
       const tag = document.activeElement?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      if ((tag === 'INPUT' || tag === 'TEXTAREA') && !document.activeElement.closest('.xterm')) return;
 
       // Alt+Space → launcher (your actual rofi bind)
       if (alt && !ctrl && !meta && key === ' ') {
