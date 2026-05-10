@@ -4,11 +4,11 @@ After=network.target docker.service
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/nas-terminal/backend
+WorkingDirectory=/home/ghively/remote-land/backend
 ExecStart=/usr/bin/node server.js
 Restart=on-failure
 RestartSec=5
-User=nas-terminal
+User=ghively
 Environment=NODE_ENV=production
 
 [Install]
