@@ -564,7 +564,7 @@ function WMDesktop({ user, host, onLogout }) {
   useEffect(() => {
     const handler = (e) => {
       const tag = document.activeElement?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      if ((tag === 'INPUT' || tag === 'TEXTAREA') && !document.activeElement.closest('.xterm')) return;
       if (e.ctrlKey && e.altKey && e.key === 'b') { e.preventDefault(); spawnWindow('browser', null); }
       if (e.ctrlKey && e.altKey && e.key === 'e') { e.preventDefault(); spawnWindow('filemgr', null); }
     };
