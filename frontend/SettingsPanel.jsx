@@ -118,8 +118,14 @@ function applySettings(s) {
   const root = document.documentElement;
   const body = document.body;
 
-  // Theme vars
-  const theme = PRESET_THEMES.find(t => t.id === s.theme);
+  // Theme vars. For the synthetic 'custom' theme we layer the user's
+  // saved custom values on top of the phosphor preset so half-finished
+  // pickers still produce a coherent palette.
+  let theme = PRESET_THEMES.find(t => t.id === s.theme);
+  if (theme && theme.id === 'custom') {
+    const base = PRESET_THEMES.find(t => t.id === 'phosphor');
+    theme = { ...theme, vars: { ...(base && base.vars), ...(s.customVars || {}) } };
+  }
   if (theme) {
     Object.entries(theme.vars).forEach(([k, v]) => root.style.setProperty(k, v));
     // Recompute derived vars
@@ -346,14 +352,19 @@ function SettingsPanel({ onClose }) {
                 </div>
                 <input type="color"
                   key={`${s.theme}-${c.var}`}
-                  defaultValue={PRESET_THEMES.find(t => t.id === s.theme)?.vars?.[c.var] || '#00ff00'}
+                  defaultValue={
+                    (s.theme === 'custom' && s.customVars && s.customVars[c.var]) ||
+                    PRESET_THEMES.find(t => t.id === s.theme)?.vars?.[c.var] ||
+                    '#00ff00'
+                  }
                   onChange={e => {
                     const val = e.target.value;
-                    const customTheme = PRESET_THEMES.find(t => t.id === 'custom');
-                    if (customTheme) {
-                      customTheme.vars[c.var] = val;
-                      set('theme', 'custom');
-                    }
+                    // Stash in component state — never mutate the preset object.
+                    setS(prev => ({
+                      ...prev,
+                      theme: 'custom',
+                      customVars: { ...(prev.customVars || {}), [c.var]: val },
+                    }));
                   }}
                   style={{ width: 40, height: 28, border: '1px solid rgba(0,255,0,0.3)', borderRadius: 3, background: 'transparent', cursor: 'pointer' }}
                 />

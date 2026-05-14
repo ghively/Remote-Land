@@ -8,19 +8,27 @@ AI agent rulebook. Read this before touching any file in this repo.
 
 **NAS Terminal** is a cyber-noir Linux server management UI — a tiling window manager interface for managing a remote Linux server (Ubuntu, Fedora, and other systemd distros). Aesthetic: CRT phosphor green, deep violet accent, cyan boot text. The vibe is a 1980s terminal crossed with a Hyprland rice.
 
-**Stack:** CDN React 18 + Babel standalone. No build step. No npm. Open `frontend/NAS Terminal.html` in any browser to run it.
+**Stack:** Local React 18. JSX is precompiled offline by `frontend/build.js`
+(a one-shot Node script that runs the vendored `babel.min.js` via Node's
+`vm` module — no npm install required). The browser loads only the
+precompiled `frontend/dist/*.js` bundles; Babel is never parsed at runtime.
+Open `frontend/NAS Terminal.html` in any browser to run.
 
 ---
 
 ## How to run
 
 ```
-# Local dev — just open the file, no server, no install, no build
+# Local dev — open the HTML, no server needed. dist/ is committed.
 frontend/NAS Terminal.html   ← double-click or drag into Chrome/Firefox/Edge
+
+# After editing any .jsx file, rebuild the dist bundle:
+node frontend/build.js       ← one-shot, no install
 
 # Remote access — backend serves the frontend at http://host:port
 cd backend && npm install --production
 cp config.example.json config.json   # set apiKey, media URLs, AI config
+node ../frontend/build.js            # only needed if .jsx changed
 node server.js                       # visit http://your-server:3001
 ```
 
@@ -59,7 +67,11 @@ All colors, fonts, spacing, and motion values come from `frontend/colors_and_typ
 
 **CRT effects** (scanline overlay + flicker animation) are defined in `frontend/wm-styles.css` and the inline `<style>` in `frontend/Developer Guide.html`. Preserve them in all changes.
 
-**Rainbow border animation** is driven by the inline `<script>` at the bottom of `frontend/NAS Terminal.html`. Do not move it into React — it uses `requestAnimationFrame` outside the React lifecycle intentionally.
+**Rainbow border animation** is now driven by pure CSS via the `@property
+--gradient-angle` animation on `:root` in `wm-styles.css`. Every `.wm-ring`
+and `.rofi-ring` reads `var(--gradient-angle)` directly — no JS rAF loop.
+A tiny shim in `NAS Terminal.html` exposes `window.__rainbowSetSpeed(secs)`
+so SettingsPanel can still adjust the rotation speed at runtime.
 
 ---
 
@@ -68,14 +80,15 @@ All colors, fonts, spacing, and motion values come from `frontend/colors_and_typ
 | File | Responsibility |
 |------|---------------|
 | `NASTerminal.jsx` | App root, login screen, boot sequence, status bar, window orchestration |
-| `WindowManager.jsx` | Dwindle tiling layout, drag, resize, keyboard shortcuts |
-| `TerminalPane.jsx` | Terminal emulator pane |
-| `SystemPanels.jsx` | CPU / RAM / disk / network stats panels |
-| `MediaAPIPanels.jsx` | Emby, Radarr, Sonarr panels (compact) |
+| `WindowManager.jsx` | Dwindle tiling layout (rects keyed by window id), drag/resize, keyboard shortcuts |
+| `TerminalPane.jsx` | Terminal emulator pane (capped buffer, memoized lines) |
+| `SystemPanels.jsx` | FileManager / SystemMonitor / LogViewer / DockerManager / ServiceManager / NetworkMap / CronEditor — all wired to backend endpoints |
+| `MediaAPIPanels.jsx` | Emby, Radarr, Sonarr, SABnzbd panels (compact) |
 | `MediaPanelsFull.jsx` | Full-size media panels |
 | `BrowserPanel.jsx` | Embedded browser panel |
-| `SettingsPanel.jsx` | Settings UI |
+| `SettingsPanel.jsx` | Settings UI with custom-theme support |
 | `AppLauncher.jsx` | Rofi-style app launcher overlay |
+| `BackendContext.jsx` | Backend connection state + heartbeat + `usePoller` / `usePageVisible` shared hooks |
 
 **State management:** All shared state lives in `NASTerminal.jsx` and flows down as props. No external state library.
 
@@ -83,13 +96,25 @@ All colors, fonts, spacing, and motion values come from `frontend/colors_and_typ
 
 ## Coding rules
 
-1. **No build tools.** All JSX is interpreted by Babel standalone at runtime.
-2. **No npm.** Use CDN `<script>` tags for any new dependency.
-3. **New components** go in `frontend/` as `.jsx` files. Add a `<script type="text/babel" src="YourComponent.jsx"></script>` tag to `frontend/NAS Terminal.html`. Order matters — load dependencies before consumers.
-4. **Never hardcode colors.** Use tokens from `colors_and_type.css`.
-5. **Never move the rainbow border script** out of the inline `<script>` at the bottom of `NAS Terminal.html`.
-6. **Do not migrate** to Vite, webpack, or TypeScript without an explicit user request.
-7. **Do not add** npm, package.json, or node_modules without an explicit user request.
+1. **Build step is one Node script** — `frontend/build.js`. It uses the
+   vendored `babel.min.js` via Node's `vm` module, so no npm install is
+   needed. Rerun it after editing any `.jsx`. The dist/ directory is
+   committed so users can open the HTML with no build step on their end.
+2. **No npm in the frontend runtime.** Use local `<script>` tags or
+   precompile a CDN script for any new dependency.
+3. **New components** go in `frontend/` as `.jsx` files. Add a
+   `<script src="dist/YourComponent.js"></script>` tag to
+   `frontend/NAS Terminal.html`. Order matters — load dependencies
+   before consumers.
+4. **Never hardcode colors or pixel sizes.** Use tokens from
+   `colors_and_type.css`. Status colors live as `--color-success`,
+   `--color-warn`, `--color-error`.
+5. **Rainbow border** is now CSS-only. Don't reintroduce a JS rAF loop.
+6. **Gate every periodic effect** on visibility — use the shared
+   `usePoller(fn, ms, enabled)` hook from `BackendContext.jsx` rather
+   than raw `setInterval`. It pauses on hidden tabs by default.
+7. **Do not migrate** to Vite, webpack, or TypeScript without an
+   explicit user request.
 
 ---
 

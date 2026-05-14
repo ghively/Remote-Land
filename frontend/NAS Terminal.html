@@ -36,57 +36,42 @@
 <body>
   <div id="root"></div>
 
-  <!-- React + Babel (local copies — no CDN required) -->
+  <!-- React (local copies — no CDN required). Babel is NOT loaded at runtime
+       anymore; JSX is precompiled into dist/*.js via `node frontend/build.js`. -->
   <script src="react.min.js"></script>
   <script src="react-dom.min.js"></script>
-  <script src="babel.min.js"></script>
 
-  <!-- xterm.js for the real PTY terminal pane (loaded before Babel-compiled JSX) -->
+  <!-- xterm.js for the real PTY terminal pane -->
   <script src="xterm.min.js"></script>
   <script src="xterm-addon-fit.min.js"></script>
 
-  <!-- Plain JS REST clients — must load before any JSX consumer -->
+  <!-- Plain JS REST clients — must load before any component consumer -->
   <script src="api.js"></script>
   <script src="aiClient.js"></script>
 
-  <!-- Component files — order matters: dependencies first -->
-  <script type="text/babel" src="BackendContext.jsx"></script>
-  <script type="text/babel" src="WindowManager.jsx"></script>
-  <script type="text/babel" src="TerminalPane.jsx"></script>
-  <script type="text/babel" src="SystemPanels.jsx"></script>
-  <script type="text/babel" src="MediaAPIPanels.jsx"></script>
-  <script type="text/babel" src="MediaPanelsFull.jsx"></script>
-  <script type="text/babel" src="BrowserPanel.jsx"></script>
-  <script type="text/babel" src="SettingsPanel.jsx"></script>
-  <script type="text/babel" src="AppLauncher.jsx"></script>
-  <script type="text/babel" src="AIChatPanel.jsx"></script>
-  <script type="text/babel" src="NASTerminal.jsx"></script>
+  <!-- Precompiled component files (order matters: dependencies first).
+       Source lives in *.jsx; rebuild with `node frontend/build.js`. -->
+  <script src="dist/BackendContext.js"></script>
+  <script src="dist/WindowManager.js"></script>
+  <script src="dist/TerminalPane.js"></script>
+  <script src="dist/SystemPanels.js"></script>
+  <script src="dist/MediaAPIPanels.js"></script>
+  <script src="dist/MediaPanelsFull.js"></script>
+  <script src="dist/BrowserPanel.js"></script>
+  <script src="dist/SettingsPanel.js"></script>
+  <script src="dist/AppLauncher.js"></script>
+  <script src="dist/AIChatPanel.js"></script>
+  <script src="dist/NASTerminal.js"></script>
 
-  <!-- Rainbow border driver — plain script, NOT Babel, so rAF persists correctly -->
+  <!-- Rainbow border speed shim. The angle itself is animated by pure CSS
+       (wm-styles.css :root rule, driven by @property --gradient-angle), so
+       there is no per-frame JS work. This shim just exposes the same
+       __rainbowSetSpeed(secondsPerRev) API the settings panel uses. -->
   <script>
-    (function startRainbow() {
-      var angle = 0;
-      // 6s per revolution — calm, matches hyprland borderangle loop
-      var degPerFrame = 360 / (60 * 6);
-
-      window.__rainbowSetSpeed = function(secondsPerRev) {
-        degPerFrame = 360 / (60 * Math.max(0.5, secondsPerRev));
-      };
-
-      function tick() {
-        angle = (angle + degPerFrame) % 360;
-        var grad = 'conic-gradient(from ' + angle + 'deg, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)';
-        document.documentElement.style.setProperty('--gradient-angle', angle + 'deg');
-        // Paint all rings directly
-        var rings = document.querySelectorAll('.wm-ring, .rofi-ring');
-        for (var i = 0; i < rings.length; i++) {
-          rings[i].style.background = grad;
-        }
-        requestAnimationFrame(tick);
-      }
-
-      requestAnimationFrame(tick);
-    })();
+    window.__rainbowSetSpeed = function (secondsPerRev) {
+      var s = Math.max(0.5, Number(secondsPerRev) || 6);
+      document.documentElement.style.setProperty('--dur-rotation', s + 's');
+    };
   </script>
 </body>
 </html>

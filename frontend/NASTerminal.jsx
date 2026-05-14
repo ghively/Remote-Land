@@ -50,15 +50,19 @@ function LoginScreen({ onLogin }) {
       await api.systemStats();   // 401 if API key wrong
       onLogin({ user: user || 'root', host, apiKey });
     } catch (err) {
-      const msg = /HTTP 401/.test(err.message)
-        ? '> AUTH FAILED: INVALID API KEY'
-        : `> AUTH FAILED: ${err.message.toUpperCase()}`;
+      const raw = err && err.message ? err.message : 'unknown error';
+      let msg;
+      if (/HTTP 401|HTTP 403/.test(raw))      msg = '> AUTH FAILED: INVALID API KEY';
+      else if (/abort|timeout|AbortError/i.test(raw)) msg = '> CONNECTION TIMEOUT — IS THE BACKEND RUNNING?';
+      else if (/Failed to fetch|NetworkError|ECONNREFUSED|ERR_NETWORK/i.test(raw))
+        msg = `> BACKEND UNREACHABLE AT ${host}:3001`;
+      else msg = `> AUTH FAILED: ${raw.toUpperCase()}`;
       setError(msg);
       setLoading(false);
     }
   };
 
-  const colorMap = { ok: 'var(--neon-green)', info: 'var(--neon-cyan)', warn: '#ffbd2e' };
+  const colorMap = { ok: 'var(--neon-green)', info: 'var(--neon-cyan)', warn: 'var(--color-warn)' };
 
   return (
     <div id="login-screen">
@@ -121,46 +125,30 @@ function StatusBar({ user, host, windows, onOpenLauncher, onLogout, onToggleTile
   const [live, setLive] = useState(null);
   const [activeWs, setActiveWs] = useState(1);
 
-  // Cosmetic clock — runs in every mode.
-  useEffect(() => {
-    const tick = () => {
-      const now = new Date();
-      const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
-      const date = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-      setStats(s => ({ ...s, time, date }));
-    };
-    tick();
-    const iv = setInterval(tick, 1000);
-    return () => clearInterval(iv);
-  }, []);
-
-  // Demo random walk — only when no real backend.
-  useEffect(() => {
-    if (!isDemo) return;
-    const iv = setInterval(() => {
-      setStats(s => ({
-        ...s,
-        cpu: Math.max(2, Math.min(98, s.cpu + (Math.random()*4-2))),
-        ram: Math.max(20, Math.min(95, s.ram + (Math.random()*1-0.5))),
-      }));
-    }, 1000);
-    return () => clearInterval(iv);
+  // One visibility-gated tick per second handles both the clock and (in
+  // demo mode) the cosmetic CPU/RAM random walk. Real backend stats come
+  // from a separate slower poll below.
+  const demoTick = React.useCallback(() => {
+    const now = new Date();
+    const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+    const date = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    setStats(s => ({
+      ...s,
+      time, date,
+      cpu: isDemo ? Math.max(2, Math.min(98, s.cpu + (Math.random()*4-2))) : s.cpu,
+      ram: isDemo ? Math.max(20, Math.min(95, s.ram + (Math.random()*1-0.5))) : s.ram,
+    }));
   }, [isDemo]);
+  usePoller(demoTick, 1000, true);
 
-  // Real polling — only while backend is online.
-  useEffect(() => {
-    if (isDemo || status !== 'online' || !api) return;
-    let alive = true;
-    const tick = async () => {
-      try {
-        const s = await api.systemStats();
-        if (alive) setLive(s);
-      } catch (_) { /* heartbeat owns the offline indicator */ }
-    };
-    tick();
-    const iv = setInterval(tick, 2000);
-    return () => { alive = false; clearInterval(iv); };
-  }, [api, status, isDemo]);
+  // Real polling — only while backend is online and tab is visible.
+  const liveTick = React.useCallback(async () => {
+    try {
+      const s = await api.systemStats();
+      setLive(s);
+    } catch (_) { /* heartbeat owns the offline indicator */ }
+  }, [api]);
+  usePoller(liveTick, 5000, !isDemo && status === 'online' && !!api);
 
   const cpuPct = isDemo ? stats.cpu : (live ? live.cpu.percent : null);
   const ramPct = isDemo ? stats.ram : (live ? Math.round(100 * live.ram.used / live.ram.total) : null);
@@ -304,6 +292,10 @@ function MobileDeck({ user, host, sessions, onAddSession, onUpdateSession, onLau
     { id: 'services', name: 'Services', icon: '[SC]', desc: 'systemctl' },
     { id: 'netmap',   name: 'Network',  icon: '[NM]', desc: 'Map' },
     { id: 'cron',     name: 'Cron',     icon: '[CR]', desc: 'Jobs' },
+    { id: 'aichat',   name: 'AI Chat',  icon: '[AI]', desc: 'LLM' },
+    { id: 'browser',  name: 'Browser',  icon: '[WW]', desc: 'Web' },
+    { id: 'apicfg',   name: 'API Cfg',  icon: '[CF]', desc: 'Keys' },
+    { id: 'settings', name: 'Settings', icon: '[ST]', desc: 'Theme' },
   ];
 
   const openApp = (app) => { setActiveApp(app); setView('app'); };
@@ -335,13 +327,17 @@ function MobileDeck({ user, host, sessions, onAddSession, onUpdateSession, onLau
           />
         ) : <div style={{ padding: 20, color: 'var(--text-dim)' }}>&gt; INITIALIZING...</div>;
       }
-      case 'filemgr':  return <FileManager />;
+      case 'filemgr':  return <FileManager {...props} />;
       case 'sysmon':   return <SystemMonitor />;
       case 'logview':  return <LogViewer />;
       case 'docker':   return <DockerManager {...props} />;
       case 'services': return <ServiceManager {...props} />;
       case 'netmap':   return <NetworkMap {...props} />;
       case 'cron':     return <CronEditor {...props} />;
+      case 'aichat':   return <AIChatPanel />;
+      case 'browser':  return <BrowserPanel />;
+      case 'settings': return <SettingsPanel onClose={goHome} />;
+      case 'apicfg':   return <BackendConfigPanel onSave={goHome} />;
       default:
         return activeApp.url ? <WebappPane url={activeApp.url} name={activeApp.name} /> : null;
     }
@@ -398,7 +394,7 @@ function MobileDeck({ user, host, sessions, onAddSession, onUpdateSession, onLau
         <button className="dock-btn" onClick={() => openApp({ id: 'terminal', name: 'Terminal', icon: '[>_]' })}>[TERM]</button>
         <button className="dock-btn" onClick={() => openApp({ id: 'sysmon', name: 'Sys Monitor', icon: '[HT]' })}>[MON]</button>
         <div className="dock-separator" />
-        <button className="dock-btn" style={{ color: '#ff5f56' }} onClick={onLogout}>[QUIT]</button>
+        <button className="dock-btn" style={{ color: 'var(--color-error)' }} onClick={onLogout}>[QUIT]</button>
       </div>
     </div>
   );
@@ -517,12 +513,21 @@ function WMDesktop({ user, host, onLogout }) {
   }, [host]);
 
   const closeTabFromWindow = useCallback((winId, sessId) => {
-    setSessions(s => s.filter(x => !(x.winId === winId && x.id === sessId)));
-    setActiveSessionMap(m => {
-      const remaining = sessions.filter(s => s.winId === winId && s.id !== sessId);
-      return { ...m, [winId]: remaining.length > 0 ? remaining[remaining.length - 1].id : null };
+    setSessions(prev => {
+      const remaining = prev.filter(x => !(x.winId === winId && x.id === sessId));
+      const sameWin = remaining.filter(s => s.winId === winId);
+      setActiveSessionMap(m => ({
+        ...m,
+        [winId]: sameWin.length > 0 ? sameWin[sameWin.length - 1].id : null,
+      }));
+      // If closing the last tab in a terminal window, close the window itself
+      // so the user isn't left staring at an empty pane.
+      if (sameWin.length === 0) {
+        setWindows(ws => ws.filter(w => !(w.id === winId && w.type === 'terminal')));
+      }
+      return remaining;
     });
-  }, [sessions]);
+  }, []);
 
   const [showCheatsheet, setShowCheatsheet] = useState(false);
 
@@ -591,9 +596,12 @@ function WMDesktop({ user, host, onLogout }) {
   const wsEl = workspaceRef.current;
   const wsW = wsEl ? wsEl.clientWidth : window.innerWidth;
   const wsH = wsEl ? wsEl.clientHeight : window.innerHeight - 60;
-  const tileRects = tileMode && visibleWindows.length > 0
-    ? dwindleLayout(visibleWindows.length, { x: 6, y: 6, w: wsW - 12, h: wsH - 12 })
-    : [];
+  // Workspace already has `--gap-outer` padding from CSS, so the dwindle
+  // rect starts at 0,0 inside the padded box. Rects are keyed by window id
+  // so minimizing one window doesn't re-shuffle the others' positions.
+  const tileRectsByWin = tileMode && visibleWindows.length > 0
+    ? dwindleLayoutByWin(visibleWindows, { x: 0, y: 0, w: wsW, h: wsH })
+    : {};
 
   const renderWindowContent = (win) => {
     const notifyFn = (msg, cls) => notify(msg, cls);
@@ -612,7 +620,7 @@ function WMDesktop({ user, host, onLogout }) {
         );
       case 'webapp':
         return <WebappPane url={win.appData.url} name={win.appData.name} />;
-      case 'filemgr':   return <FileManager />;
+      case 'filemgr':   return <FileManager onNotify={notifyFn} />;
       case 'sysmon':    return <SystemMonitor />;
       case 'logview':   return <LogViewer />;
       case 'docker':    return <DockerManager onNotify={notifyFn} />;
@@ -667,8 +675,7 @@ function WMDesktop({ user, host, onLogout }) {
       <div id="workspace">
         <div id="workspace-inner" ref={workspaceRef} style={{position:'relative',width:'100%',height:'100%'}}>
         {windows.map((win, idx) => {
-          const tileIdx = visibleWindows.findIndex(w => w.id === win.id);
-          const tileRect = tileMode && tileRects[tileIdx];
+          const tileRect = tileMode ? tileRectsByWin[win.id] : null;
           return (
             <WMWindow
               key={win.id}
@@ -681,6 +688,11 @@ function WMDesktop({ user, host, onLogout }) {
               isTiled={tileMode && !win.minimized}
               tileRect={tileRect || null}
             >
+              {/* Children stay mounted while minimized (CSS display:none) so
+                  in-panel state — scroll position, edit buffers, terminal
+                  scrollback — survives restore. The polling hooks themselves
+                  pause via usePoller's visibility gate, so the idle cost of
+                  a minimized window is bounded. */}
               {renderWindowContent(win)}
             </WMWindow>
           );

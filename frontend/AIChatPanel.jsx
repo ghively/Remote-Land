@@ -135,7 +135,7 @@ function AIChatPanel() {
               {m.role === 'user' ? '> USER' : '> ASSISTANT'}
             </div>
             <div style={{ whiteSpace: 'pre-wrap',
-                          color: m.error ? '#ff5f56' : 'var(--text-primary)',
+                          color: m.error ? 'var(--color-error)' : 'var(--text-primary)',
                           fontFamily: 'var(--font-mono)' }}>
               {m.content || (streaming && i === messages.length - 1 ? '…' : '')}
             </div>
@@ -157,7 +157,7 @@ function AIChatPanel() {
           {toolEvents.slice(-8).map((ev, i) => (
             <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
               <span style={{ color: ev.kind === 'start' ? 'var(--neon-cyan)'
-                              : ev.ok === false ? '#ff5f56' : 'var(--neon-green)',
+                              : ev.ok === false ? 'var(--color-error)' : 'var(--neon-green)',
                              letterSpacing: 1 }}>
                 {ev.kind === 'start' ? '→ tool' : (ev.ok === false ? '✗ tool' : '← tool')}
               </span>

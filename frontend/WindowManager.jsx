@@ -2,23 +2,44 @@
 const { useState, useEffect, useRef, useCallback } = React;
 
 // ── Dwindle layout ────────────────────────────────────────────────────────────
+// Hyprland-style: split the largest side recursively, leaving a `gap_in`
+// between siblings. Minimum tile size is enforced so we never produce a
+// rect smaller than the window's own min-width/min-height CSS (300x200).
+const TILE_MIN_W = 300;
+const TILE_MIN_H = 200;
+const GAP_IN = 8;
+
 function dwindleLayout(count, rect, depth = 0) {
   if (count === 0) return [];
   if (count === 1) return [{ ...rect }];
   const { x, y, w, h } = rect;
-  const gap = 8;
   const splitHoriz = w >= h;
   let a, b;
   if (splitHoriz) {
-    const hw = Math.floor((w - gap) / 2);
+    const hw = Math.floor((w - GAP_IN) / 2);
     a = { x, y, w: hw, h };
-    b = { x: x + hw + gap, y, w: w - hw - gap, h };
+    b = { x: x + hw + GAP_IN, y, w: w - hw - GAP_IN, h };
   } else {
-    const hh = Math.floor((h - gap) / 2);
+    const hh = Math.floor((h - GAP_IN) / 2);
     a = { x, y, w, h: hh };
-    b = { x, y: y + hh + gap, w, h: h - hh - gap };
+    b = { x, y: y + hh + GAP_IN, w, h: h - hh - GAP_IN };
+  }
+  // If splitting any further would produce a sub-min-size tile, stop and
+  // stack the remaining windows on top of `b` so nothing renders broken.
+  if (a.w < TILE_MIN_W || a.h < TILE_MIN_H || b.w < TILE_MIN_W || b.h < TILE_MIN_H) {
+    return Array.from({ length: count }, () => ({ ...rect }));
   }
   return [a, ...dwindleLayout(count - 1, b, depth + 1)];
+}
+
+// Wrapper that returns a {winId -> rect} map keyed by window ID, so
+// minimizing/closing a window doesn't shift the remaining windows to wrong
+// rects. Pass the ordered list of visible windows.
+function dwindleLayoutByWin(visibleWins, rect) {
+  const rects = dwindleLayout(visibleWins.length, rect);
+  const byId = {};
+  visibleWins.forEach((w, i) => { byId[w.id] = rects[i]; });
+  return byId;
 }
 
 // ── Individual Window ─────────────────────────────────────────────────────────
@@ -252,24 +273,65 @@ function KeyboardCheatsheet({ onClose }) {
     { keys: 'Escape',               action: 'Close overlay / launcher' },
   ];
 
+  const dialogRef = React.useRef(null);
+  const closeBtnRef = React.useRef(null);
+
   useEffect(() => {
-    const h = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
+    const previouslyFocused = document.activeElement;
+    // Move focus into the dialog so Tab cycles within it.
+    if (closeBtnRef.current) closeBtnRef.current.focus();
+
+    const onKey = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); onClose(); return; }
+      if (e.key !== 'Tab' || !dialogRef.current) return;
+      const focusables = dialogRef.current.querySelectorAll(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      if (!focusables.length) { e.preventDefault(); return; }
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault(); last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault(); first.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      if (previouslyFocused && previouslyFocused.focus) previouslyFocused.focus();
+    };
   }, [onClose]);
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(6px)',
-      zIndex: 6000, display: 'flex', alignItems: 'center', justifyContent: 'center',
-    }} onClick={onClose}>
-      <div style={{
-        background: 'rgba(10,10,15,0.95)', border: '1px solid rgba(0,255,0,0.4)',
-        borderRadius: 'var(--radius-xl)', padding: 28, minWidth: 420, maxWidth: '90vw',
-        boxShadow: 'var(--shadow-window)',
-      }} onClick={e => e.stopPropagation()}>
-        <div style={{ color: 'var(--neon-cyan)', fontSize: '1rem', letterSpacing: 3, textShadow: 'var(--bloom-cyan)', marginBottom: 16, borderBottom: '2px solid var(--neon-purple)', paddingBottom: 8 }}>
-          [KEYBOARD_BINDINGS]
+    <div
+      role="presentation"
+      style={{
+        position: 'fixed', inset: 0, background: 'var(--bg-overlay-2)', backdropFilter: 'blur(6px)',
+        zIndex: 6000, display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}
+      onClick={onClose}
+    >
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cheatsheet-title"
+        style={{
+          background: 'rgba(10,10,15,0.95)', border: '1px solid var(--border-green-30)',
+          borderRadius: 'var(--radius-xl)', padding: 28, minWidth: 420, maxWidth: '90vw',
+          boxShadow: 'var(--shadow-window)',
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div id="cheatsheet-title" style={{ color: 'var(--neon-cyan)', fontSize: '1rem', letterSpacing: 3, textShadow: 'var(--bloom-cyan)', marginBottom: 16, borderBottom: '2px solid var(--neon-purple)', paddingBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ flex: 1 }}>[KEYBOARD_BINDINGS]</span>
+          <button
+            ref={closeBtnRef}
+            onClick={onClose}
+            aria-label="Close keyboard bindings"
+            style={{ background: 'transparent', border: '1px solid var(--border-green-30)', color: 'var(--neon-cyan)', padding: '2px 10px', borderRadius: 3, fontFamily: 'var(--font-mono)', cursor: 'pointer' }}
+          >ESC</button>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {BINDINGS.map((b, i) => (
@@ -278,7 +340,7 @@ function KeyboardCheatsheet({ onClose }) {
                 fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--neon-green)',
                 textShadow: 'var(--glow-green-sm)', minWidth: 200, flexShrink: 0,
                 background: 'rgba(0,255,0,0.07)', padding: '2px 8px', borderRadius: 3,
-                border: '1px solid rgba(0,255,0,0.2)',
+                border: '1px solid var(--border-green-20)',
               }}>{b.keys}</span>
               <span style={{ color: 'var(--text-dim)', fontSize: '0.8rem' }}>{b.action}</span>
             </div>
@@ -294,5 +356,6 @@ function KeyboardCheatsheet({ onClose }) {
 
 window.WMWindow = WMWindow;
 window.dwindleLayout = dwindleLayout;
+window.dwindleLayoutByWin = dwindleLayoutByWin;
 window.useKeyboardWM = useKeyboardWM;
 window.KeyboardCheatsheet = KeyboardCheatsheet;
