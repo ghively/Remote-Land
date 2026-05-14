@@ -95,7 +95,7 @@ function BrowserPanel() {
   const removeBM = (i) => setBM(b => b.filter((_, j) => j !== i));
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: '#000' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: 'var(--bg-dark)' }}>
 
       {/* Navigation toolbar */}
       <div style={{
@@ -108,7 +108,7 @@ function BrowserPanel() {
         <button className="cmd-btn-sm" onClick={reload}    title="Reload">[↻]</button>
 
         {/* Security indicator */}
-        <span style={{ fontSize: '0.72rem', color: url.startsWith('https') ? '#27c93f' : '#ffbd2e', flexShrink: 0 }}>
+        <span style={{ fontSize: '0.72rem', color: url.startsWith('https') ? 'var(--color-success)' : 'var(--color-warn)', flexShrink: 0 }}>
           {url.startsWith('https') ? '[SSL]' : url ? '[HTTP]' : '[--]'}
         </span>
 
@@ -179,7 +179,7 @@ function BrowserPanel() {
       </div>
 
       {/* Content area */}
-      <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#0a0a0a' }}>
+      <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: 'var(--bg-dark)' }}>
 
         {/* New tab / home screen */}
         {view === 'newtab' && (
@@ -256,7 +256,7 @@ function BrowserPanel() {
             alignItems: 'center', justifyContent: 'center', gap: 12,
             background: 'rgba(0,0,0,0.9)', zIndex: 5,
           }}>
-            <div style={{ color: '#ff5f56', fontSize: '0.85rem', letterSpacing: 2, textShadow: '0 0 5px #ff5f56' }}>
+            <div style={{ color: 'var(--color-error)', fontSize: '0.85rem', letterSpacing: 2, textShadow: '0 0 5px var(--color-error)' }}>
               &gt; NAVIGATION FAILED
             </div>
             <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', textAlign: 'center', lineHeight: 1.8, maxWidth: 320 }}>

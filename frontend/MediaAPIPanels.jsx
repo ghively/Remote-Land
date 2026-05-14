@@ -49,9 +49,9 @@ function Btn({ label, cls = '', onClick, disabled }) {
 
 function StatusPill({ text, color }) {
   const colors = {
-    green:  { color: '#27c93f', shadow: '0 0 5px #27c93f' },
-    yellow: { color: '#ffbd2e', shadow: '0 0 5px #ffbd2e' },
-    red:    { color: '#ff5f56', shadow: '0 0 5px #ff5f56' },
+    green:  { color: 'var(--color-success)', shadow: '0 0 5px var(--color-success)' },
+    yellow: { color: 'var(--color-warn)', shadow: '0 0 5px var(--color-warn)' },
+    red:    { color: 'var(--color-error)', shadow: '0 0 5px var(--color-error)' },
     cyan:   { color: 'var(--neon-cyan)', shadow: 'var(--bloom-cyan)' },
     dim:    { color: 'var(--text-dim)', shadow: 'none' },
   };
@@ -80,7 +80,7 @@ function ApiNotice({ service, onConfigure }) {
 
 // ── Progress bar ──────────────────────────────────────────────────────────────
 function ProgressBar({ pct, color = 'green' }) {
-  const colors = { green: 'var(--neon-green)', yellow: '#ffbd2e', red: '#ff5f56', cyan: 'var(--neon-cyan)', purple: 'var(--neon-purple)' };
+  const colors = { green: 'var(--neon-green)', yellow: 'var(--color-warn)', red: 'var(--color-error)', cyan: 'var(--neon-cyan)', purple: 'var(--neon-purple)' };
   return (
     <div style={{ flex: 1, height: 8, background: 'rgba(0,255,0,0.08)', border: '1px solid rgba(0,255,0,0.15)', borderRadius: 2, overflow: 'hidden' }}>
       <div style={{ width: `${Math.min(100, pct)}%`, height: '100%', background: colors[color] || colors.green, transition: 'width 0.5s', boxShadow: `0 0 4px ${colors[color] || colors.green}` }} />
@@ -154,8 +154,8 @@ function BackendConfigPanel({ onSave }) {
       </div>
 
       {testResult && (
-        <div style={{ fontSize: '0.72rem', color: testResult.ok ? 'var(--neon-green)' : '#ff5f56',
-                      textShadow: testResult.ok ? 'var(--glow-green-sm)' : '0 0 4px #ff5f56', letterSpacing: 1 }}>
+        <div style={{ fontSize: '0.72rem', color: testResult.ok ? 'var(--neon-green)' : 'var(--color-error)',
+                      textShadow: testResult.ok ? 'var(--glow-green-sm)' : '0 0 4px var(--color-error)', letterSpacing: 1 }}>
           {testResult.msg}
         </div>
       )}
@@ -234,21 +234,16 @@ function MediaSummaryCard({ service, accent, fetcher, demoData, fields, onOpenWe
   const [error, setError]     = useState(null);
 
   useEffect(() => {
-    if (isDemo) { setData(demoData); setOffline(false); return; }
-    if (status !== 'online') return;
-    let alive = true;
-    const tick = async () => {
-      try {
-        const d = await fetcher();
-        if (!alive) return;
-        if (d && d.status === 'offline') { setOffline(true); setData(null); setError(null); }
-        else { setData(d); setOffline(false); setError(null); }
-      } catch (err) { if (alive) { setError(err.message); setOffline(true); } }
-    };
-    tick();
-    const iv = setInterval(tick, 30000);
-    return () => { alive = false; clearInterval(iv); };
-  }, [isDemo, status, fetcher, demoData]);
+    if (isDemo) { setData(demoData); setOffline(false); }
+  }, [isDemo, demoData]);
+  const tick = React.useCallback(async () => {
+    try {
+      const d = await fetcher();
+      if (d && d.status === 'offline') { setOffline(true); setData(null); setError(null); }
+      else { setData(d); setOffline(false); setError(null); }
+    } catch (err) { setError(err.message); setOffline(true); }
+  }, [fetcher]);
+  usePoller(tick, 30000, !isDemo && status === 'online');
 
   return (
     <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14, height: '100%', overflow: 'auto' }}>
@@ -263,7 +258,7 @@ function MediaSummaryCard({ service, accent, fetcher, demoData, fields, onOpenWe
       </div>
 
       {error && !offline && (
-        <div style={{ fontSize: '0.72rem', color: '#ffbd2e', textShadow: '0 0 4px #ffbd2e' }}>
+        <div style={{ fontSize: '0.72rem', color: 'var(--color-warn)', textShadow: '0 0 4px var(--color-warn)' }}>
           &gt; ERR: {error}
         </div>
       )}
@@ -381,13 +376,18 @@ function SABnzbdPanel({ onOpenWebUI }) {
     setLoading(false);
   }, [hasKey, cfg]);
 
-  useEffect(() => { load(); const iv = setInterval(load, 8000); return () => clearInterval(iv); }, [load]);
+  usePoller(load, 8000, true);
 
   const doPause = async () => {
     try {
-      if (hasKey) await sabFetch(cfg.sabnzbd.url, cfg.sabnzbd.apiKey, { mode: paused ? 'resume' : 'pause' });
+      // Optimistically reflect new state so the UI doesn't lag the next poll.
       setPaused(p => !p);
-    } catch {}
+      setQueueData(q => q ? { ...q, status: paused ? 'Downloading' : 'Paused' } : q);
+      if (hasKey) await sabFetch(cfg.sabnzbd.url, cfg.sabnzbd.apiKey, { mode: paused ? 'resume' : 'pause' });
+    } catch {
+      // Roll back optimistic toggle on failure.
+      setPaused(p => !p);
+    }
   };
 
   const doDelete = async (nzo_id) => {
@@ -414,7 +414,7 @@ function SABnzbdPanel({ onOpenWebUI }) {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       {/* Toolbar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderBottom: '1px solid rgba(0,255,0,0.1)', background: 'rgba(0,0,0,0.5)', flexShrink: 0, flexWrap: 'wrap' }}>
-        <span style={{ color: '#ffbd2e', fontSize: '0.75rem', fontWeight: 'bold', letterSpacing: 2, textShadow: '0 0 5px #ffbd2e', marginRight: 4 }}>[SABNZBD]</span>
+        <span style={{ color: 'var(--color-warn)', fontSize: '0.75rem', fontWeight: 'bold', letterSpacing: 2, textShadow: '0 0 5px var(--color-warn)', marginRight: 4 }}>[SABNZBD]</span>
         {['queue','history'].map(t => (
           <Btn key={t} label={`[${t.toUpperCase()}]`} cls={tab===t?'cyan':''} onClick={() => setTab(t)} />
         ))}
@@ -431,7 +431,7 @@ function SABnzbdPanel({ onOpenWebUI }) {
       {tab === 'queue' && queueData && (
         <div style={{ padding: '8px 12px', borderBottom: '1px solid rgba(0,255,0,0.08)', background: 'rgba(0,0,0,0.4)', flexShrink: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: '0.75rem' }}>
-            <span style={{ color: paused ? '#ffbd2e' : 'var(--neon-green)', textShadow: paused ? '0 0 5px #ffbd2e' : 'var(--glow-green-sm)' }}>
+            <span style={{ color: paused ? 'var(--color-warn)' : 'var(--neon-green)', textShadow: paused ? '0 0 5px var(--color-warn)' : 'var(--glow-green-sm)' }}>
               STATUS: {paused ? 'PAUSED' : queueData.status?.toUpperCase()}
             </span>
             <span style={{ color: 'var(--neon-cyan)', textShadow: 'var(--bloom-cyan)' }}>
@@ -461,7 +461,7 @@ function SABnzbdPanel({ onOpenWebUI }) {
                <div key={slot.nzo_id} style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,255,0,0.15)', borderRadius: 4, padding: '10px 12px', marginBottom: 8 }}>
                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
                    <div style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
-                     <div style={{ color: '#ffbd2e', fontSize: '0.8rem', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textShadow: '0 0 4px #ffbd2e' }}>{slot.filename}</div>
+                     <div style={{ color: 'var(--color-warn)', fontSize: '0.8rem', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textShadow: '0 0 4px var(--color-warn)' }}>{slot.filename}</div>
                      <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)', display: 'flex', gap: 10, marginTop: 2 }}>
                        <span>AGE: {slot.avg_age}</span>
                        <span>ETA: {slot.timeleft}</span>
@@ -475,7 +475,7 @@ function SABnzbdPanel({ onOpenWebUI }) {
                  </div>
                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                    <ProgressBar pct={pct} color={slot.status==='Downloading'?'yellow':'dim'} />
-                   <span style={{ fontSize: '0.7rem', color: '#ffbd2e', width: 36, textAlign: 'right', flexShrink: 0 }}>{pct.toFixed(0)}%</span>
+                   <span style={{ fontSize: '0.7rem', color: 'var(--color-warn)', width: 36, textAlign: 'right', flexShrink: 0 }}>{pct.toFixed(0)}%</span>
                  </div>
                </div>
              );
@@ -494,7 +494,7 @@ function SABnzbdPanel({ onOpenWebUI }) {
                <div key={item.nzo_id || i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 12px', borderBottom: '1px solid rgba(0,255,0,0.05)', transition: 'background 0.1s' }}
                  onMouseEnter={e => e.currentTarget.style.background='rgba(0,255,0,0.03)'}
                  onMouseLeave={e => e.currentTarget.style.background='transparent'}>
-                 <span style={{ color: item.status === 'Completed' ? '#27c93f' : '#ff5f56', fontSize: '0.75rem', flexShrink: 0 }}>●</span>
+                 <span style={{ color: item.status === 'Completed' ? 'var(--color-success)' : 'var(--color-error)', fontSize: '0.75rem', flexShrink: 0 }}>●</span>
                  <div style={{ flex: 1, minWidth: 0 }}>
                    <div style={{ fontSize: '0.78rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
                    <div style={{ fontSize: '0.66rem', color: 'var(--text-dim)', display: 'flex', gap: 8 }}>

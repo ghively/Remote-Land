@@ -6,6 +6,10 @@ const system = require('./system');
 const docker = require('./docker');
 const media = require('./media');
 const ai = require('./ai');
+const files = require('./files');
+const services = require('./services');
+const network = require('./network');
+const cron = require('./cron');
 const { attachTerminal } = require('./terminal');
 
 function createApp(config) {
@@ -71,6 +75,11 @@ function createApp(config) {
     catch (err) { res.status(503).json({ error: err.message }); }
   });
 
+  app.post('/api/docker/:id/restart', auth, async (req, res) => {
+    try { await docker.restartContainer(req.params.id); res.json({ ok: true }); }
+    catch (err) { res.status(503).json({ error: err.message }); }
+  });
+
   app.get('/api/docker/:id/logs', auth, async (req, res) => {
     try { res.type('text/plain').send(await docker.getLogs(req.params.id)); }
     catch (err) { res.status(503).json({ error: err.message }); }
@@ -89,6 +98,66 @@ function createApp(config) {
   app.get('/api/media/sonarr', auth, async (req, res) => {
     try { res.json(await media.getSonarrData(config)); }
     catch (_) { res.json({ status: 'offline' }); }
+  });
+
+  // ── Files ──────────────────────────────────────────────────────────────────
+  app.get('/api/files/list', auth, async (req, res) => {
+    try { res.json(await files.list(req.query.path || '/')); }
+    catch (err) { res.status(err.code === 'EBADPATH' ? 400 : 500).json({ error: err.message }); }
+  });
+  app.get('/api/files/read', auth, async (req, res) => {
+    try { res.json(await files.readText(req.query.path)); }
+    catch (err) { res.status(400).json({ error: err.message }); }
+  });
+  app.get('/api/files/download', auth, async (req, res) => {
+    try { files.streamFile(req.query.path, res); }
+    catch (err) { res.status(400).json({ error: err.message }); }
+  });
+  app.post('/api/files/mkdir', auth, async (req, res) => {
+    try { res.json(await files.mkdir(req.body && req.body.path)); }
+    catch (err) { res.status(400).json({ error: err.message }); }
+  });
+  app.post('/api/files/rename', auth, async (req, res) => {
+    try { res.json(await files.rename(req.body && req.body.from, req.body && req.body.to)); }
+    catch (err) { res.status(400).json({ error: err.message }); }
+  });
+  app.delete('/api/files', auth, async (req, res) => {
+    try { res.json(await files.rm(req.query.path)); }
+    catch (err) { res.status(400).json({ error: err.message }); }
+  });
+
+  // ── Systemd services ───────────────────────────────────────────────────────
+  app.get('/api/services', auth, async (req, res) => {
+    try { res.json(await services.list({ state: req.query.state })); }
+    catch (err) { res.status(503).json({ error: err.message }); }
+  });
+  app.get('/api/services/:name', auth, async (req, res) => {
+    try { res.json(await services.status(req.params.name)); }
+    catch (err) { res.status(503).json({ error: err.message }); }
+  });
+  app.get('/api/services/:name/logs', auth, async (req, res) => {
+    try { res.type('text/plain').send(await services.recentLogs(req.params.name, parseInt(req.query.lines, 10) || 100)); }
+    catch (err) { res.status(503).json({ error: err.message }); }
+  });
+  app.post('/api/services/:name/:verb', auth, async (req, res) => {
+    try { res.json(await services.action(req.params.name, req.params.verb)); }
+    catch (err) { res.status(503).json({ error: err.message }); }
+  });
+
+  // ── Network ────────────────────────────────────────────────────────────────
+  app.get('/api/network', auth, async (req, res) => {
+    try { res.json(await network.snapshot()); }
+    catch (err) { res.status(503).json({ error: err.message }); }
+  });
+
+  // ── Cron ───────────────────────────────────────────────────────────────────
+  app.get('/api/cron', auth, async (req, res) => {
+    try { res.json(await cron.read()); }
+    catch (err) { res.status(503).json({ error: err.message }); }
+  });
+  app.put('/api/cron', auth, async (req, res) => {
+    try { res.json(await cron.write(req.body && req.body.body)); }
+    catch (err) { res.status(400).json({ error: err.message }); }
   });
 
   // ── AI ──────────────────────────────────────────────────────────────────────

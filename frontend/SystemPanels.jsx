@@ -52,21 +52,35 @@ const FS_TREE = {
   ],
 };
 
-function FileManager() {
+function FileManager({ onNotify }) {
+  const { api, isDemo, status } = useBackend();
   const [path, setPath] = useState('/');
-  const [selected, setSelected] = useState(null);
   const [pathInput, setPathInput] = useState('/');
+  const [selected, setSelected] = useState(null);
+  const [entries, setEntries] = useState(isDemo ? (FS_TREE['/'] || []) : []);
+  const [error, setError] = useState(null);
+  const notify = (m, c) => onNotify && onNotify(m, c);
 
-  const entries = FS_TREE[path] || [{ name: '[empty]', type: 'file', size: '-', perms: '----------', modified: '' }];
-  const pathParts = path === '/' ? [''] : path.split('/');
+  const refresh = useCallback(async (p = path) => {
+    if (isDemo) { setEntries(FS_TREE[p] || []); setError(null); return; }
+    if (status !== 'online' || !api) return;
+    setError(null);
+    try {
+      const data = await api.listDir(p);
+      setEntries(data.entries || []);
+    } catch (err) {
+      setError(err.message || 'failed to list directory');
+      setEntries([]);
+    }
+  }, [api, isDemo, status, path]);
+
+  useEffect(() => { refresh(path); setSelected(null); }, [path, refresh]);
 
   const navigate = (name, type) => {
     if (type !== 'dir') return;
     const newPath = path === '/' ? `/${name}` : `${path}/${name}`;
-    const resolved = FS_TREE[newPath] ? newPath : path;
-    setPath(resolved);
-    setPathInput(resolved);
-    setSelected(null);
+    setPath(newPath);
+    setPathInput(newPath);
   };
 
   const goUp = () => {
@@ -76,7 +90,50 @@ function FileManager() {
     const parent = parts.join('/') || '/';
     setPath(parent);
     setPathInput(parent);
-    setSelected(null);
+  };
+
+  const goToInput = () => {
+    if (!pathInput.startsWith('/')) return;
+    setPath(pathInput);
+  };
+
+  const onMkdir = async () => {
+    const name = prompt('New directory name:');
+    if (!name) return;
+    const target = path === '/' ? `/${name}` : `${path}/${name}`;
+    if (isDemo) { notify(`> [DEMO] would mkdir ${target}`, 'ok'); return; }
+    try { await api.mkdir(target); notify(`> CREATED ${target}`, 'ok'); refresh(); }
+    catch (err) { notify(`> MKDIR FAILED: ${err.message}`, 'crit'); }
+  };
+
+  const onDelete = async () => {
+    if (selected == null || !entries[selected]) return;
+    const e = entries[selected];
+    const target = path === '/' ? `/${e.name}` : `${path}/${e.name}`;
+    if (!confirm(`Delete ${target}? This cannot be undone.`)) return;
+    if (isDemo) { notify(`> [DEMO] would delete ${target}`, 'warn'); return; }
+    try { await api.deleteFile(target); notify(`> DELETED ${target}`, 'warn'); refresh(); }
+    catch (err) { notify(`> DELETE FAILED: ${err.message}`, 'crit'); }
+  };
+
+  const onRename = async () => {
+    if (selected == null || !entries[selected]) return;
+    const e = entries[selected];
+    const newName = prompt('New name:', e.name);
+    if (!newName || newName === e.name) return;
+    const from = path === '/' ? `/${e.name}` : `${path}/${e.name}`;
+    const to   = path === '/' ? `/${newName}` : `${path}/${newName}`;
+    if (isDemo) { notify(`> [DEMO] would rename to ${newName}`, 'ok'); return; }
+    try { await api.renameFile(from, to); notify(`> RENAMED`, 'ok'); refresh(); }
+    catch (err) { notify(`> RENAME FAILED: ${err.message}`, 'crit'); }
+  };
+
+  const onDownload = () => {
+    if (selected == null || !entries[selected]) return;
+    const e = entries[selected];
+    if (e.type !== 'file' || isDemo) return;
+    const target = path === '/' ? `/${e.name}` : `${path}/${e.name}`;
+    window.open(api.downloadUrl(target), '_blank');
   };
 
   const crumbs = path === '/' ? ['/'] : ['/', ...path.split('/').filter(Boolean)];
@@ -85,7 +142,7 @@ function FileManager() {
     <div className="filemgr-pane">
       <div className="filemgr-toolbar">
         <Btn label="[<]" onClick={goUp} />
-        <div className="filemgr-path">
+        <div className="filemgr-path" style={{ flex: 1 }}>
           {crumbs.map((crumb, i) => (
             <span key={i}>
               <span
@@ -99,43 +156,60 @@ function FileManager() {
             </span>
           ))}
         </div>
-        <Btn label="[REFRESH]" cls="cyan" onClick={() => setSelected(null)} />
-        <Btn label="[UPLOAD]" onClick={() => {}} />
-        <Btn label="[MKDIR]" onClick={() => {}} />
+        <input
+          className="login-field"
+          value={pathInput}
+          onChange={e => setPathInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') goToInput(); }}
+          style={{ width: 220, fontSize: '0.7rem', padding: '2px 6px' }}
+          placeholder="/absolute/path"
+        />
+        <Btn label="[GO]"      cls="cyan" onClick={goToInput} />
+        <Btn label="[REFRESH]" onClick={() => refresh()} />
+        <Btn label="[MKDIR]"   onClick={onMkdir} />
       </div>
-      {/* Column headers */}
+      {error && (
+        <div style={{ padding: '4px 12px', color: 'var(--color-error)', fontSize: '0.72rem' }}>
+          &gt; {error}
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 10, padding: '4px 12px', borderBottom: '1px solid rgba(0,255,0,0.1)', fontSize: '0.7rem', color: 'var(--text-dim)', letterSpacing: '1px', flexShrink: 0 }}>
         <span style={{ width: 18 }}></span>
         <span style={{ flex: 1 }}>NAME</span>
         <span className="filemgr-perms">PERMISSIONS</span>
-        <span className="filemgr-meta" style={{ width: 50 }}>SIZE</span>
+        <span className="filemgr-meta" style={{ width: 60 }}>SIZE</span>
         <span className="filemgr-date">MODIFIED</span>
       </div>
       <div className="filemgr-body">
+        {entries.length === 0 && (
+          <div style={{ padding: 12, color: 'var(--text-dim)', fontSize: '0.75rem' }}>
+            {error ? '> directory unreadable' : '> empty directory'}
+          </div>
+        )}
         {entries.map((entry, i) => (
           <div
-            key={i}
+            key={`${path}/${entry.name}`}
             className={`filemgr-row${selected === i ? ' selected' : ''}`}
             onClick={() => setSelected(i)}
             onDoubleClick={() => navigate(entry.name, entry.type)}
           >
-            <span className="filemgr-icon">{entry.type === 'dir' ? '[D]' : '[F]'}</span>
+            <span className="filemgr-icon">{entry.type === 'dir' ? '[D]' : entry.type === 'link' ? '[L]' : '[F]'}</span>
             <span className={`filemgr-name${entry.type === 'dir' ? ' dir' : ''}`}>{entry.name}</span>
             <span className="filemgr-perms">{entry.perms}</span>
-            <span className="filemgr-meta" style={{ width: 50 }}>{entry.size}</span>
+            <span className="filemgr-meta" style={{ width: 60 }}>{entry.size}</span>
             <span className="filemgr-date">{entry.modified}</span>
           </div>
         ))}
       </div>
       {selected !== null && entries[selected] && (
-        <div style={{ padding: '6px 12px', borderTop: '1px solid rgba(0,255,0,0.1)', display: 'flex', gap: 6, flexShrink: 0, background: 'rgba(0,0,0,0.4)' }}>
+        <div style={{ padding: '6px 12px', borderTop: '1px solid rgba(0,255,0,0.1)', display: 'flex', gap: 6, flexShrink: 0, background: 'var(--bg-overlay-1)' }}>
           <span style={{ flex: 1, fontSize: '0.75rem', color: 'var(--text-dim)' }}>
             &gt; {entries[selected].name}
           </span>
-          <Btn label="[OPEN]" cls="cyan" onClick={() => navigate(entries[selected].name, entries[selected].type)} />
-          <Btn label="[RENAME]" onClick={() => {}} />
-          <Btn label="[DELETE]" cls="danger" onClick={() => {}} />
-          {entries[selected].type === 'file' && <Btn label="[DOWNLOAD]" onClick={() => {}} />}
+          <Btn label="[OPEN]"   cls="cyan"   onClick={() => navigate(entries[selected].name, entries[selected].type)} />
+          <Btn label="[RENAME]" onClick={onRename} />
+          <Btn label="[DELETE]" cls="danger" onClick={onDelete} />
+          {entries[selected].type === 'file' && <Btn label="[DOWNLOAD]" onClick={onDownload} />}
         </div>
       )}
     </div>
@@ -169,7 +243,7 @@ function SysBar({ label, value, max = 100 }) {
       <div className="sysmon-bar-wrap">
         <div className={`sysmon-bar ${cls}`} style={{ width: `${pct}%` }} />
       </div>
-      <span className={`sysmon-val${cls ? ' ' + cls : ''}`} style={{ color: cls === 'crit' ? '#ff5f56' : cls === 'warn' ? '#ffbd2e' : 'var(--neon-green)' }}>
+      <span className={`sysmon-val${cls ? ' ' + cls : ''}`} style={{ color: cls === 'crit' ? 'var(--color-error)' : cls === 'warn' ? 'var(--color-warn)' : 'var(--neon-green)' }}>
         {typeof value === 'number' ? `${value.toFixed(1)}%` : value}
       </span>
     </div>
@@ -190,65 +264,55 @@ function SystemMonitor() {
   const [procs, setProcs] = useState(PROCS_BASE);
   const [sortBy, setSortBy] = useState('cpu');
 
-  // Demo mode random walk.
-  useEffect(() => {
-    if (!isDemo) return;
-    const iv = setInterval(() => {
-      setStats(s => ({
-        ...s,
-        cpu: s.cpu.map(v => Math.max(2, Math.min(98, v + (Math.random() * 6 - 3)))),
-        ram: Math.max(20, Math.min(95, s.ram + (Math.random() * 2 - 1))),
-        net_rx: Math.max(0.1, s.net_rx + (Math.random() * 4 - 2)),
-        net_tx: Math.max(0.0, s.net_tx + (Math.random() * 2 - 1)),
-        disk_read: Math.max(0.0, s.disk_read + (Math.random() * 3 - 1.5)),
-        disk_write: Math.max(0.0, s.disk_write + (Math.random() * 2 - 1)),
-        temp: Math.max(38, Math.min(72, s.temp + (Math.random() * 2 - 1))),
-      }));
-      setProcs(p => p.map(proc => ({
-        ...proc,
-        cpu: Math.max(0, Math.min(30, proc.cpu + (Math.random() * 1.0 - 0.5))),
-        mem: Math.max(0, Math.min(20, proc.mem + (Math.random() * 0.2 - 0.1))),
-      })));
-    }, 1500);
-    return () => clearInterval(iv);
-  }, [isDemo]);
+  // Demo mode random walk — paused when tab hidden.
+  const demoTick = React.useCallback(() => {
+    setStats(s => ({
+      ...s,
+      cpu: s.cpu.map(v => Math.max(2, Math.min(98, v + (Math.random() * 6 - 3)))),
+      ram: Math.max(20, Math.min(95, s.ram + (Math.random() * 2 - 1))),
+      net_rx: Math.max(0.1, s.net_rx + (Math.random() * 4 - 2)),
+      net_tx: Math.max(0.0, s.net_tx + (Math.random() * 2 - 1)),
+      disk_read: Math.max(0.0, s.disk_read + (Math.random() * 3 - 1.5)),
+      disk_write: Math.max(0.0, s.disk_write + (Math.random() * 2 - 1)),
+      temp: Math.max(38, Math.min(72, s.temp + (Math.random() * 2 - 1))),
+    }));
+    setProcs(p => p.map(proc => ({
+      ...proc,
+      cpu: Math.max(0, Math.min(30, proc.cpu + (Math.random() * 1.0 - 0.5))),
+      mem: Math.max(0, Math.min(20, proc.mem + (Math.random() * 0.2 - 0.1))),
+    })));
+  }, []);
+  usePoller(demoTick, 1500, isDemo);
 
-  // Live polling — system stats and process list.
-  useEffect(() => {
-    if (isDemo || status !== 'online' || !api) return;
-    let alive = true;
-    const tick = async () => {
-      try {
-        const [s, p] = await Promise.all([api.systemStats(), api.processes()]);
-        if (!alive) return;
-        const ramPct = s.ram && s.ram.total ? 100 * s.ram.used / s.ram.total : 0;
-        const rxKb = (s.network && s.network.rxBytesPerSec || 0) / 1024;
-        const txKb = (s.network && s.network.txBytesPerSec || 0) / 1024;
-        const diskPct = s.disk && s.disk.total ? 100 * s.disk.used / s.disk.total : 0;
-        setStats(prev => ({
-          ...prev,
-          cpu: [s.cpu ? s.cpu.percent : 0],
-          ram: ramPct,
-          net_rx: rxKb,
-          net_tx: txKb,
-          disk_read: diskPct,
-          disk_write: 0,
-          load: s.load ? [s.load.one, s.load.five, s.load.fifteen].map(n => n.toFixed(2)) : prev.load,
-          uptime: (s.uptime && s.uptime.formatted) || prev.uptime,
-        }));
-        setProcs(p.map(row => ({
-          pid:  row.pid,
-          user: row.user,
-          cpu:  Number(row.cpu)  || 0,
-          mem:  Number(row.mem)  || 0,
-          cmd:  row.cmd || '',
-        })));
-      } catch (_) { /* heartbeat handles offline */ }
-    };
-    tick();
-    const iv = setInterval(tick, 5000);
-    return () => { alive = false; clearInterval(iv); };
-  }, [api, isDemo, status]);
+  // Live polling — system stats and process list. Paused when tab hidden.
+  const liveTick = React.useCallback(async () => {
+    try {
+      const [s, p] = await Promise.all([api.systemStats(), api.processes()]);
+      const ramPct = s.ram && s.ram.total ? 100 * s.ram.used / s.ram.total : 0;
+      const rxKb = (s.network && s.network.rxBytesPerSec || 0) / 1024;
+      const txKb = (s.network && s.network.txBytesPerSec || 0) / 1024;
+      const diskPct = s.disk && s.disk.total ? 100 * s.disk.used / s.disk.total : 0;
+      setStats(prev => ({
+        ...prev,
+        cpu: [s.cpu ? s.cpu.percent : 0],
+        ram: ramPct,
+        net_rx: rxKb,
+        net_tx: txKb,
+        disk_read: diskPct,
+        disk_write: 0,
+        load: s.load ? [s.load.one, s.load.five, s.load.fifteen].map(n => n.toFixed(2)) : prev.load,
+        uptime: (s.uptime && s.uptime.formatted) || prev.uptime,
+      }));
+      setProcs(p.map(row => ({
+        pid:  row.pid,
+        user: row.user,
+        cpu:  Number(row.cpu)  || 0,
+        mem:  Number(row.mem)  || 0,
+        cmd:  row.cmd || '',
+      })));
+    } catch (_) { /* heartbeat handles offline */ }
+  }, [api]);
+  usePoller(liveTick, 5000, !isDemo && status === 'online' && !!api);
 
   const avgCpu = stats.cpu.reduce((a, b) => a + b, 0) / stats.cpu.length;
   const sortedProcs = [...procs].sort((a, b) => b[sortBy] - a[sortBy]);
@@ -302,8 +366,8 @@ function SystemMonitor() {
               <tr key={p.pid}>
                 <td style={{ color: 'var(--neon-purple)' }}>{p.pid}</td>
                 <td>{p.user}</td>
-                <td style={{ color: p.cpu > 5 ? '#ffbd2e' : 'var(--text-primary)' }}>{p.cpu.toFixed(1)}</td>
-                <td style={{ color: p.mem > 5 ? '#ffbd2e' : 'var(--text-primary)' }}>{p.mem.toFixed(1)}</td>
+                <td style={{ color: p.cpu > 5 ? 'var(--color-warn)' : 'var(--text-primary)' }}>{p.cpu.toFixed(1)}</td>
+                <td style={{ color: p.mem > 5 ? 'var(--color-warn)' : 'var(--text-primary)' }}>{p.mem.toFixed(1)}</td>
                 <td style={{ color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>{p.cmd}</td>
               </tr>
             ))}
@@ -353,15 +417,12 @@ function LogViewer() {
   const abortRef = useRef(null);
   const bodyRef = useRef(null);
 
-  useEffect(() => {
-    if (!isDemo) return;
-    const iv = setInterval(() => {
-      const d = new Date();
-      const ts = `May  7 ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
-      setLogs(l => [...l.slice(-199), makeLogLine(ts)]);
-    }, 2200);
-    return () => clearInterval(iv);
-  }, [isDemo]);
+  const demoLogTick = React.useCallback(() => {
+    const d = new Date();
+    const ts = `May  7 ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+    setLogs(l => [...l.slice(-199), makeLogLine(ts)]);
+  }, []);
+  usePoller(demoLogTick, 2200, isDemo);
 
   useEffect(() => {
     if (follow && bodyRef.current) {
@@ -440,7 +501,7 @@ function LogViewer() {
             <Btn label="[CLOSE]" onClick={closeAnalysis} />
           </div>
           <div style={{ whiteSpace: 'pre-wrap',
-                        color: analysis.error ? '#ff5f56' : 'var(--text-primary)',
+                        color: analysis.error ? 'var(--color-error)' : 'var(--text-primary)',
                         fontFamily: 'var(--font-mono)', fontSize: '0.78rem', lineHeight: 1.6 }}>
             {analysis.text || (analysis.streaming ? '> thinking...' : '')}
           </div>
@@ -508,13 +569,7 @@ function DockerManager({ onNotify }) {
     }
   }, [api, isDemo]);
 
-  useEffect(() => {
-    if (isDemo) return;
-    if (status !== 'online') return;
-    refresh();
-    const iv = setInterval(refresh, 5000);
-    return () => clearInterval(iv);
-  }, [refresh, isDemo, status]);
+  usePoller(refresh, 5000, !isDemo && status === 'online');
 
   const toggle = async (id, action) => {
     if (isDemo) {
@@ -566,7 +621,7 @@ function DockerManager({ onNotify }) {
   return (
     <div className="docker-pane">
       {unavailable && !isDemo && (
-        <div style={{ padding: '8px 10px', marginBottom: 10, color: '#ff5f56', textShadow: '0 0 4px #ff5f56', letterSpacing: 2, border: '1px solid rgba(255,95,86,0.4)', borderRadius: 4 }}>
+        <div style={{ padding: '8px 10px', marginBottom: 10, color: 'var(--color-error)', textShadow: '0 0 4px var(--color-error)', letterSpacing: 2, border: '1px solid rgba(255,95,86,0.4)', borderRadius: 4 }}>
           [ DOCKER UNAVAILABLE — CHECK SOCKET / PERMISSIONS ]
         </div>
       )}
@@ -645,17 +700,58 @@ const INITIAL_SVCS = [
 ];
 
 function ServiceManager({ onNotify }) {
-  const [svcs, setSvcs] = useState(INITIAL_SVCS);
+  const { api, isDemo, status } = useBackend();
+  const [svcs, setSvcs] = useState(isDemo ? INITIAL_SVCS : []);
   const [filter, setFilter] = useState('');
+  const [error, setError] = useState(null);
 
-  const doAction = (name, action) => {
-    setSvcs(ss => ss.map(s => s.name === name
-      ? { ...s, state: action === 'start' ? 'active' : action === 'stop' ? 'inactive' : action === 'restart' ? 'active' : s.state }
-      : s));
-    onNotify && onNotify(`> systemctl ${action} ${name}`, action === 'stop' ? 'warn' : 'ok');
+  const refresh = useCallback(async () => {
+    if (isDemo) { setSvcs(INITIAL_SVCS); return; }
+    if (status !== 'online' || !api) return;
+    try {
+      const list = await api.listServices();
+      setSvcs(list.map(u => ({
+        name: u.unit, desc: u.description,
+        state: u.active === 'active' ? 'active' : 'inactive',
+        sub: u.sub,
+      })));
+      setError(null);
+    } catch (err) { setError(err.message); }
+  }, [api, isDemo, status]);
+
+  usePoller(refresh, 8000, !isDemo && status === 'online');
+  useEffect(() => { if (isDemo) setSvcs(INITIAL_SVCS); }, [isDemo]);
+
+  const doAction = async (name, action) => {
+    if (isDemo) {
+      setSvcs(ss => ss.map(s => s.name === name
+        ? { ...s, state: action === 'start' ? 'active' : action === 'stop' ? 'inactive' : action === 'restart' ? 'active' : s.state }
+        : s));
+      onNotify && onNotify(`> [DEMO] systemctl ${action} ${name}`, action === 'stop' ? 'warn' : 'ok');
+      return;
+    }
+    try {
+      await api.serviceAction(name, action);
+      onNotify && onNotify(`> systemctl ${action} ${name}`, action === 'stop' ? 'warn' : 'ok');
+      refresh();
+    } catch (err) {
+      onNotify && onNotify(`> ${action.toUpperCase()} FAILED: ${err.message}`, 'crit');
+    }
   };
 
-  const filtered = svcs.filter(s => !filter || s.name.includes(filter) || s.desc.toLowerCase().includes(filter.toLowerCase()));
+  const viewLogs = async (name) => {
+    if (isDemo) { onNotify && onNotify(`> [DEMO] journalctl -u ${name}`, 'ok'); return; }
+    try {
+      const text = await api.serviceLogs(name, 80);
+      // Cheap modal — alert keeps scope tight; the LogViewer panel is the
+      // real home for browseable logs.
+      alert(`[${name}]\n\n${text.slice(-4000)}`);
+    } catch (err) {
+      onNotify && onNotify(`> LOGS FAILED: ${err.message}`, 'crit');
+    }
+  };
+
+  const filtered = svcs.filter(s => !filter || s.name.includes(filter) || (s.desc || '').toLowerCase().includes(filter.toLowerCase()));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
@@ -668,8 +764,11 @@ function ServiceManager({ onNotify }) {
           onChange={e => setFilter(e.target.value)}
           style={{ flex: 1 }}
         />
-        <Btn label="[DAEMON-RELOAD]" cls="warn" onClick={() => onNotify && onNotify('> systemctl daemon-reload', 'ok')} />
+        <Btn label="[REFRESH]" cls="cyan" onClick={refresh} />
       </div>
+      {error && (
+        <div style={{ padding: '4px 12px', color: 'var(--color-error)', fontSize: '0.72rem' }}>&gt; {error}</div>
+      )}
       <div style={{ flex: 1, overflowY: 'auto', scrollbarWidth: 'thin', scrollbarColor: 'rgba(0,255,0,0.3) transparent' }}>
         {filtered.map(s => (
           <div key={s.name} className="svc-row">
@@ -684,7 +783,7 @@ function ServiceManager({ onNotify }) {
               {s.state !== 'active' && <Btn label="[START]" cls="cyan" onClick={() => doAction(s.name, 'start')} />}
               {s.state === 'active'  && <Btn label="[STOP]"  cls="danger" onClick={() => doAction(s.name, 'stop')} />}
               {s.state === 'active'  && <Btn label="[RESTART]" cls="warn" onClick={() => doAction(s.name, 'restart')} />}
-              <Btn label="[LOGS]" onClick={() => {}} />
+              <Btn label="[LOGS]" onClick={() => viewLogs(s.name)} />
             </div>
           </div>
         ))}
@@ -710,19 +809,45 @@ const NET_HOSTS = [
 const TYPE_ICONS = { gateway: '[GW]', server: '[SRV]', client: '[PC]', media: '[TV]', mobile: '[MOB]', network: '[SW]' };
 
 function NetworkMap({ onNotify }) {
+  const { api, isDemo, status } = useBackend();
   const [scanning, setScanning] = useState(false);
   const [selected, setSelected] = useState(null);
+  const [snapshot, setSnapshot] = useState(null);
+  const [error, setError] = useState(null);
 
-  const scan = () => {
-    setScanning(true);
-    setTimeout(() => { setScanning(false); onNotify && onNotify('> NETWORK SCAN COMPLETE: 8 HOSTS', 'ok'); }, 2000);
-  };
+  const scan = useCallback(async () => {
+    if (isDemo) {
+      setScanning(true);
+      setTimeout(() => { setScanning(false); onNotify && onNotify('> [DEMO] NETWORK SCAN COMPLETE', 'ok'); }, 1200);
+      return;
+    }
+    setScanning(true); setError(null);
+    try {
+      const snap = await api.networkSnapshot();
+      setSnapshot(snap);
+      onNotify && onNotify(`> ${snap.neighbors.length} HOSTS / ${snap.connections.length} CONNECTIONS`, 'ok');
+    } catch (err) {
+      setError(err.message);
+      onNotify && onNotify(`> SCAN FAILED: ${err.message}`, 'crit');
+    } finally { setScanning(false); }
+  }, [api, isDemo, onNotify]);
+
+  useEffect(() => { if (!isDemo && status === 'online') scan(); }, [isDemo, status, scan]);
+
+  // Adapt backend snapshot into the host-card shape the existing UI uses.
+  const hosts = !isDemo && snapshot
+    ? snapshot.neighbors.map(n => ({
+        ip: n.ip, mac: n.mac, host: n.ip, type: 'client',
+        status: (n.state || '').toUpperCase() === 'REACHABLE' ? 'up' : 'down',
+        latency: n.state || '-',
+      }))
+    : NET_HOSTS;
 
   return (
     <div className="netmap-pane">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <span style={{ fontSize: '0.75rem', color: 'var(--neon-cyan)', letterSpacing: 2, textShadow: 'var(--bloom-cyan)' }}>
-          SUBNET: 192.168.1.0/24 | {NET_HOSTS.filter(h => h.status === 'up').length} ONLINE
+          SUBNET: {snapshot && snapshot.interfaces && snapshot.interfaces[0]?.addresses?.[0]?.cidr || '192.168.1.0/24'} | {hosts.filter(h => h.status === 'up').length} ONLINE
         </span>
         <div style={{ display: 'flex', gap: 6 }}>
           <Btn label={scanning ? '[SCANNING...]' : '[SCAN NETWORK]'} cls="cyan" onClick={scan} />
@@ -733,7 +858,7 @@ function NetworkMap({ onNotify }) {
       <div style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,255,0,0.15)', borderRadius: 4, padding: 12, marginBottom: 12, position: 'relative', minHeight: 140 }}>
         <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginBottom: 8, letterSpacing: 1 }}>TOPOLOGY: STAR (192.168.1.1)</div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          {NET_HOSTS.map((h, i) => (
+          {hosts.map((h, i) => (
             <div
               key={i}
               onClick={() => setSelected(i)}
@@ -749,9 +874,9 @@ function NetworkMap({ onNotify }) {
                 minWidth: 90,
               }}
             >
-              <div style={{ color: h.status === 'up' ? 'var(--neon-cyan)' : '#ff5f56', marginBottom: 2 }}>{TYPE_ICONS[h.type]} {h.host}</div>
+              <div style={{ color: h.status === 'up' ? 'var(--neon-cyan)' : 'var(--color-error)', marginBottom: 2 }}>{TYPE_ICONS[h.type]} {h.host}</div>
               <div style={{ color: 'var(--text-dim)' }}>{h.ip}</div>
-              <div style={{ color: h.status === 'up' ? '#27c93f' : '#ff5f56' }}>{h.status === 'up' ? '● ONLINE' : '○ OFFLINE'}</div>
+              <div style={{ color: h.status === 'up' ? 'var(--color-success)' : 'var(--color-error)' }}>{h.status === 'up' ? '● ONLINE' : '○ OFFLINE'}</div>
             </div>
           ))}
         </div>
@@ -770,9 +895,9 @@ function NetworkMap({ onNotify }) {
           </tr>
         </thead>
         <tbody>
-          {NET_HOSTS.map((h, i) => (
+          {hosts.map((h, i) => (
             <tr key={i} onClick={() => setSelected(i)} style={{ cursor: 'pointer' }}>
-              <td><span style={{ color: h.status === 'up' ? '#27c93f' : '#ff5f56' }}>{h.status === 'up' ? '●' : '○'}</span></td>
+              <td><span style={{ color: h.status === 'up' ? 'var(--color-success)' : 'var(--color-error)' }}>{h.status === 'up' ? '●' : '○'}</span></td>
               <td style={{ color: 'var(--neon-green)' }}>{h.ip}</td>
               <td>{h.host}</td>
               <td style={{ color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>{h.mac}</td>
@@ -804,17 +929,81 @@ const INITIAL_CRONS = [
   { id: 6, schedule: '0 6 1 * *',    cmd: 'certbot renew --quiet',                        enabled: true,  owner: 'root',   desc: 'SSL cert renewal' },
 ];
 
+// Serialize the in-memory crons array back into a crontab body. Disabled
+// entries become commented-out lines so toggle is non-destructive.
+function cronsToBody(crons) {
+  return crons.map(c => {
+    const line = `${c.schedule} ${c.cmd}`;
+    return (c.enabled ? '' : '# ') + line + (c.desc ? `   # ${c.desc}` : '');
+  }).join('\n') + '\n';
+}
+
 function CronEditor({ onNotify }) {
-  const [crons, setCrons] = useState(INITIAL_CRONS);
+  const { api, isDemo, status } = useBackend();
+  const [crons, setCrons] = useState(isDemo ? INITIAL_CRONS : []);
   const [editing, setEditing] = useState(null);
   const [newCron, setNewCron] = useState({ schedule: '', cmd: '', desc: '', owner: 'root' });
   const [showAdd, setShowAdd] = useState(false);
+  const [error, setError] = useState(null);
 
-  const toggleEnabled = (id) => setCrons(cs => cs.map(c => c.id === id ? { ...c, enabled: !c.enabled } : c));
-  const deleteCron = (id) => { setCrons(cs => cs.filter(c => c.id !== id)); onNotify && onNotify('> CRON JOB REMOVED', 'warn'); };
+  const refresh = useCallback(async () => {
+    if (isDemo) { setCrons(INITIAL_CRONS); return; }
+    if (status !== 'online' || !api) return;
+    try {
+      const data = await api.readCrontab();
+      // The backend returns parsed entries; merge job vs comment lines into
+      // a UI-friendly enabled/disabled list.
+      const out = [];
+      let pendingDesc = '';
+      for (const e of data.entries || []) {
+        if (e.type === 'comment') {
+          // Disabled-via-comment heuristic: "# 0 2 * * * cmd" → toggled off.
+          const stripped = e.line.replace(/^#\s*/, '').trim();
+          const parts = stripped.split(/\s+/);
+          if (parts.length >= 6) {
+            out.push({
+              id: e.idx, schedule: parts.slice(0, 5).join(' '),
+              cmd: parts.slice(5).join(' '),
+              desc: pendingDesc, enabled: false, owner: 'me',
+            });
+            pendingDesc = '';
+          } else {
+            pendingDesc = stripped;
+          }
+        } else if (e.type === 'job') {
+          out.push({
+            id: e.idx, schedule: e.schedule, cmd: e.command,
+            desc: pendingDesc, enabled: true, owner: 'me',
+          });
+          pendingDesc = '';
+        }
+      }
+      setCrons(out);
+      setError(null);
+    } catch (err) { setError(err.message); }
+  }, [api, isDemo, status]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const persist = async (next) => {
+    setCrons(next);
+    if (isDemo) return;
+    try { await api.writeCrontab(cronsToBody(next)); }
+    catch (err) { onNotify && onNotify(`> SAVE FAILED: ${err.message}`, 'crit'); }
+  };
+
+  const toggleEnabled = (id) => {
+    const next = crons.map(c => c.id === id ? { ...c, enabled: !c.enabled } : c);
+    persist(next);
+  };
+  const deleteCron = (id) => {
+    if (!confirm('Delete this cron entry?')) return;
+    persist(crons.filter(c => c.id !== id));
+    onNotify && onNotify('> CRON JOB REMOVED', 'warn');
+  };
   const addCron = () => {
     if (!newCron.schedule || !newCron.cmd) return;
-    setCrons(cs => [...cs, { id: Date.now(), ...newCron, enabled: true }]);
+    persist([...crons, { id: Date.now(), ...newCron, enabled: true }]);
     setNewCron({ schedule: '', cmd: '', desc: '', owner: 'root' });
     setShowAdd(false);
     onNotify && onNotify('> CRON JOB ADDED', 'ok');
@@ -826,8 +1015,14 @@ function CronEditor({ onNotify }) {
         <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', letterSpacing: 1 }}>
           CRONTAB: {crons.filter(c => c.enabled).length} ACTIVE
         </span>
-        <Btn label="[+ ADD JOB]" cls="cyan" onClick={() => setShowAdd(s => !s)} />
+        <div style={{ display: 'flex', gap: 6 }}>
+          <Btn label="[REFRESH]" onClick={refresh} />
+          <Btn label="[+ ADD JOB]" cls="cyan" onClick={() => setShowAdd(s => !s)} />
+        </div>
       </div>
+      {error && (
+        <div style={{ padding: '4px 12px', color: 'var(--color-error)', fontSize: '0.72rem' }}>&gt; {error}</div>
+      )}
 
       {showAdd && (
         <div style={{ background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(0,243,255,0.3)', borderRadius: 4, padding: 12, display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
@@ -852,7 +1047,7 @@ function CronEditor({ onNotify }) {
 
       {crons.map(c => (
         <div key={c.id} className="cron-row">
-          <span className={`cron-enabled`} style={{ color: c.enabled ? '#27c93f' : '#ff5f56', width: 8, flexShrink: 0 }}>●</span>
+          <span className={`cron-enabled`} style={{ color: c.enabled ? 'var(--color-success)' : 'var(--color-error)', width: 8, flexShrink: 0 }}>●</span>
           <span className="cron-schedule">{c.schedule}</span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className="cron-cmd" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.cmd}</div>
