@@ -392,3 +392,277 @@ describe('endpoint helper', () => {
     expect(ai._internals.endpoint({ ai: {} })).toBe('https://api.openai.com/v1/chat/completions');
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// ANTHROPIC PROVIDER
+// ════════════════════════════════════════════════════════════════════════════
+
+const ANTHRO = { ai: { provider: 'anthropic', apiKey: 'sk-ant-test' } };
+
+describe('providerOf', () => {
+  test('explicit "anthropic" wins', () => {
+    expect(ai.providerOf({ ai: { provider: 'anthropic' } })).toBe('anthropic');
+  });
+  test('explicit "openai" wins', () => {
+    expect(ai.providerOf({ ai: { provider: 'openai', baseUrl: 'https://api.anthropic.com' } })).toBe('openai');
+  });
+  test('auto-detects from anthropic.com baseUrl', () => {
+    expect(ai.providerOf({ ai: { baseUrl: 'https://api.anthropic.com/v1' } })).toBe('anthropic');
+  });
+  test('defaults to openai', () => {
+    expect(ai.providerOf({})).toBe('openai');
+    expect(ai.providerOf({ ai: { baseUrl: 'http://localhost:11434/v1' } })).toBe('openai');
+  });
+});
+
+describe('anthropic endpoint + headers', () => {
+  test('builds /v1/messages with default base', () => {
+    expect(ai._internals.anthropicEndpoint({ ai: {} })).toBe('https://api.anthropic.com/v1/messages');
+  });
+  test('respects explicit baseUrl with or without /v1', () => {
+    expect(ai._internals.anthropicEndpoint({ ai: { baseUrl: 'https://api.anthropic.com' } }))
+      .toBe('https://api.anthropic.com/v1/messages');
+    expect(ai._internals.anthropicEndpoint({ ai: { baseUrl: 'https://api.anthropic.com/v1/' } }))
+      .toBe('https://api.anthropic.com/v1/messages');
+  });
+  test('sets x-api-key + anthropic-version headers', () => {
+    const h = ai._internals.anthropicHeaders({ ai: { apiKey: 'sk-ant-1' } });
+    expect(h['x-api-key']).toBe('sk-ant-1');
+    expect(h['anthropic-version']).toBe('2023-06-01');
+    expect(h['authorization']).toBeUndefined();
+  });
+});
+
+describe('toAnthropicMessages', () => {
+  test('merges system messages into the system field', () => {
+    const out = ai._internals.toAnthropicMessages([
+      { role: 'system', content: 'A' },
+      { role: 'system', content: 'B' },
+      { role: 'user',   content: 'hi' },
+    ]);
+    expect(out.system).toBe('A\n\nB');
+    expect(out.messages).toEqual([{ role: 'user', content: 'hi' }]);
+  });
+
+  test('converts tool messages to user tool_result blocks', () => {
+    const out = ai._internals.toAnthropicMessages([
+      { role: 'user', content: 'list containers' },
+      { role: 'assistant', content: null, tool_calls: [
+        { id: 'call_1', type: 'function', function: { name: 'listContainers', arguments: '{}' } },
+      ]},
+      { role: 'tool', tool_call_id: 'call_1', content: '[{"name":"emby"}]' },
+    ]);
+    expect(out.messages[1].role).toBe('assistant');
+    expect(out.messages[1].content).toEqual([
+      { type: 'tool_use', id: 'call_1', name: 'listContainers', input: {} },
+    ]);
+    expect(out.messages[2]).toEqual({
+      role: 'user',
+      content: [{ type: 'tool_result', tool_use_id: 'call_1', content: '[{"name":"emby"}]' }],
+    });
+  });
+
+  test('preserves text content alongside tool_use blocks', () => {
+    const out = ai._internals.toAnthropicMessages([
+      { role: 'assistant', content: 'I will check.', tool_calls: [
+        { id: 'c1', type: 'function', function: { name: 'getSystemStats', arguments: '{}' } },
+      ]},
+    ]);
+    expect(out.messages[0].content).toEqual([
+      { type: 'text', text: 'I will check.' },
+      { type: 'tool_use', id: 'c1', name: 'getSystemStats', input: {} },
+    ]);
+  });
+});
+
+describe('toAnthropicTools', () => {
+  test('flattens OpenAI function tools into anthropic shape', () => {
+    const anthroTools = ai._internals.toAnthropicTools(ai._internals.CHAT_TOOLS);
+    expect(anthroTools[0]).toEqual({
+      name: 'getSystemStats',
+      description: expect.any(String),
+      input_schema: { type: 'object', properties: {}, additionalProperties: false },
+    });
+  });
+});
+
+describe('anthropic streamChat', () => {
+  afterEach(() => { delete global.fetch; jest.clearAllMocks(); });
+
+  // Helper: build an Anthropic-style SSE stream from a sequence of events.
+  function anthroChunks(events) {
+    return events.map(e => `event: ${e.type}\ndata: ${JSON.stringify(e.data)}\n\n`);
+  }
+
+  test('streams text deltas as {delta}', async () => {
+    global.fetch = jest.fn().mockResolvedValue(fakeStreamResponse(anthroChunks([
+      { type: 'message_start',       data: { message: { id: 'msg_1' } } },
+      { type: 'content_block_start', data: { index: 0, content_block: { type: 'text', text: '' } } },
+      { type: 'content_block_delta', data: { index: 0, delta: { type: 'text_delta', text: 'Hello' } } },
+      { type: 'content_block_delta', data: { index: 0, delta: { type: 'text_delta', text: ' world' } } },
+      { type: 'content_block_stop',  data: { index: 0 } },
+      { type: 'message_delta',       data: { delta: { stop_reason: 'end_turn' }, usage: { input_tokens: 10, output_tokens: 2 } } },
+      { type: 'message_stop',        data: {} },
+    ])));
+    const events = [];
+    for await (const ev of ai.streamChat(ANTHRO, [{ role: 'user', content: 'hi' }])) {
+      events.push(ev);
+    }
+    expect(events[0]).toEqual({ delta: 'Hello' });
+    expect(events[1]).toEqual({ delta: ' world' });
+    expect(events[events.length - 1]).toEqual({
+      done: true,
+      usage: { input_tokens: 10, output_tokens: 2 },
+    });
+  });
+
+  test('hits the anthropic endpoint with x-api-key + anthropic-version', async () => {
+    let capturedUrl, capturedHeaders;
+    global.fetch = jest.fn().mockImplementation((url, init) => {
+      capturedUrl = url; capturedHeaders = init.headers;
+      return Promise.resolve(fakeStreamResponse(anthroChunks([
+        { type: 'message_delta', data: { delta: { stop_reason: 'end_turn' }, usage: {} } },
+        { type: 'message_stop',  data: {} },
+      ])));
+    });
+    // eslint-disable-next-line no-empty
+    for await (const _ of ai.streamChat(ANTHRO, [{ role: 'user', content: 'hi' }])) {}
+    expect(capturedUrl).toBe('https://api.anthropic.com/v1/messages');
+    expect(capturedHeaders['x-api-key']).toBe('sk-ant-test');
+    expect(capturedHeaders['anthropic-version']).toBe('2023-06-01');
+    expect(capturedHeaders['authorization']).toBeUndefined();
+  });
+
+  test('passes system prompt as a top-level field, not inside messages', async () => {
+    let captured;
+    global.fetch = jest.fn().mockImplementation((_url, init) => {
+      captured = JSON.parse(init.body);
+      return Promise.resolve(fakeStreamResponse(anthroChunks([
+        { type: 'message_delta', data: { delta: { stop_reason: 'end_turn' } } },
+        { type: 'message_stop',  data: {} },
+      ])));
+    });
+    // eslint-disable-next-line no-empty
+    for await (const _ of ai.streamChat(ANTHRO, [{ role: 'user', content: 'hi' }])) {}
+    expect(typeof captured.system).toBe('string');
+    expect(captured.system).toMatch(/NAS Terminal/);
+    expect(captured.messages.every(m => m.role !== 'system')).toBe(true);
+  });
+
+  test('executes a tool_use then continues with the model reply', async () => {
+    docker.getContainers.mockResolvedValue([
+      { id: 'a1', name: 'emby', image: 'e/e:1', state: 'running', status: 'Up 2d' },
+    ]);
+
+    let call = 0;
+    global.fetch = jest.fn().mockImplementation(() => {
+      call++;
+      if (call === 1) {
+        return Promise.resolve(fakeStreamResponse(anthroChunks([
+          { type: 'content_block_start', data: { index: 0, content_block: { type: 'tool_use', id: 'toolu_1', name: 'listContainers' } } },
+          { type: 'content_block_delta', data: { index: 0, delta: { type: 'input_json_delta', partial_json: '{}' } } },
+          { type: 'content_block_stop',  data: { index: 0 } },
+          { type: 'message_delta',       data: { delta: { stop_reason: 'tool_use' } } },
+          { type: 'message_stop',        data: {} },
+        ])));
+      }
+      return Promise.resolve(fakeStreamResponse(anthroChunks([
+        { type: 'content_block_start', data: { index: 0, content_block: { type: 'text', text: '' } } },
+        { type: 'content_block_delta', data: { index: 0, delta: { type: 'text_delta', text: 'You have 1 container.' } } },
+        { type: 'message_delta',       data: { delta: { stop_reason: 'end_turn' } } },
+        { type: 'message_stop',        data: {} },
+      ])));
+    });
+
+    const events = [];
+    for await (const ev of ai.streamChat(ANTHRO, [{ role: 'user', content: 'how many?' }], { useTools: true })) {
+      events.push(ev);
+    }
+    expect(events.find(e => e.tool_call_start)).toMatchObject({
+      tool_call_start: { id: 'toolu_1', name: 'listContainers' },
+    });
+    expect(events.find(e => e.tool_call_result)).toEqual({
+      tool_call_result: { id: 'toolu_1', name: 'listContainers', ok: true },
+    });
+    expect(events.find(e => e.delta)).toEqual({ delta: 'You have 1 container.' });
+
+    // Second request body must encode the assistant tool_use + user tool_result.
+    const second = JSON.parse(global.fetch.mock.calls[1][1].body);
+    const assistant = second.messages.find(m => m.role === 'assistant');
+    const userResult = second.messages[second.messages.length - 1];
+    expect(assistant.content[0]).toMatchObject({ type: 'tool_use', name: 'listContainers' });
+    expect(userResult.content[0]).toMatchObject({ type: 'tool_result', tool_use_id: 'toolu_1' });
+  });
+
+  test('surfaces upstream error events as thrown errors', async () => {
+    global.fetch = jest.fn().mockResolvedValue(fakeStreamResponse(anthroChunks([
+      { type: 'error', data: { error: { type: 'overloaded_error', message: 'overloaded' } } },
+    ])));
+    const gen = ai.streamChat(ANTHRO, [{ role: 'user', content: 'hi' }]);
+    await expect((async () => { for await (const _ of gen) {} })()).rejects.toThrow(/overloaded/);
+  });
+});
+
+describe('anthropic streamLogAnalysis', () => {
+  afterEach(() => { delete global.fetch; });
+
+  test('truncates input + streams text deltas', async () => {
+    let captured;
+    global.fetch = jest.fn().mockImplementation((_url, init) => {
+      captured = JSON.parse(init.body);
+      return Promise.resolve(fakeStreamResponse([
+        'event: content_block_delta\ndata: {"index":0,"delta":{"type":"text_delta","text":"Looks fine."}}\n\n',
+        'event: message_delta\ndata: {"delta":{"stop_reason":"end_turn"},"usage":{"input_tokens":1,"output_tokens":3}}\n\n',
+        'event: message_stop\ndata: {}\n\n',
+      ]));
+    });
+    const huge = Array.from({ length: 60_000 }, (_, i) => `line${i}`);
+    const events = [];
+    for await (const ev of ai.streamLogAnalysis(ANTHRO, huge)) events.push(ev);
+
+    expect(captured.system).toMatch(/log analyst/);
+    expect(captured.messages[0].content.length).toBeLessThanOrEqual(50_000);
+    expect(events.find(e => e.delta)).toEqual({ delta: 'Looks fine.' });
+    expect(events[events.length - 1].done).toBe(true);
+  });
+});
+
+describe('anthropic suggestShell', () => {
+  afterEach(() => jest.clearAllMocks());
+
+  test('forces a tool call and parses the structured input', async () => {
+    axios.post.mockResolvedValue({
+      data: { content: [
+        { type: 'tool_use', name: 'submit_shell_suggestion',
+          input: { command: 'ls -la', explanation: 'list', danger: 'safe' } },
+      ] },
+    });
+    const out = await ai.suggestShell(ANTHRO, 'list files long');
+    expect(out).toEqual({ command: 'ls -la', explanation: 'list', danger: 'safe' });
+
+    const call = axios.post.mock.calls[0];
+    expect(call[0]).toBe('https://api.anthropic.com/v1/messages');
+    expect(call[1].tool_choice).toEqual({ type: 'tool', name: 'submit_shell_suggestion' });
+    expect(call[2].headers['x-api-key']).toBe('sk-ant-test');
+  });
+
+  test('falls back to scraping text content if no tool_use block', async () => {
+    axios.post.mockResolvedValue({
+      data: { content: [
+        { type: 'text', text: 'Here you go: {"command":"ls","explanation":"x","danger":"safe"}' },
+      ] },
+    });
+    const out = await ai.suggestShell(ANTHRO, 'list');
+    expect(out.command).toBe('ls');
+  });
+
+  test('rejects malformed input from the tool_use block', async () => {
+    axios.post.mockResolvedValue({
+      data: { content: [
+        { type: 'tool_use', name: 'submit_shell_suggestion',
+          input: { command: 'ls', danger: 'sketchy' } },
+      ] },
+    });
+    await expect(ai.suggestShell(ANTHRO, 'list')).rejects.toThrow(/malformed/);
+  });
+});

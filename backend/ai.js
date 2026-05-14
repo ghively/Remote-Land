@@ -1,7 +1,22 @@
-/* ai.js — OpenAI-compatible Chat Completions proxy. Used by the
-   /api/ai/* routes to stream chat, suggest shell commands, and
-   summarise log output. No SDK dependency — native fetch for
-   streaming, existing axios dep for non-streaming. */
+/* ai.js — AI proxy with pluggable providers.
+   Public surface:
+     isConfigured(config)
+     streamChat(config, messages, opts)        — async iterator
+     suggestShell(config, intent)              — Promise<{command,explanation,danger}>
+     streamLogAnalysis(config, lines)          — async iterator
+
+   Two providers are supported and dispatched by config.ai.provider
+   (or auto-detected from baseUrl):
+     - openai    : OpenAI-compatible Chat Completions schema. Default.
+                   Works with any provider that speaks that API — OpenAI,
+                   Ollama, LiteLLM proxies, etc.
+     - anthropic : Native Anthropic Messages API. Talks directly to
+                   api.anthropic.com without a translation proxy.
+
+   Both providers stream identically-shaped envelope events back to the
+   caller: {delta}, {tool_call_start}, {tool_call_result}, {done, usage},
+   {error}. The server.js SSE writer is unaware of which provider produced
+   them. */
 
 const axios = require('axios');
 const system = require('./system');
@@ -43,6 +58,34 @@ const SHELL_SCHEMA = {
   },
 };
 
+// Default model triples per provider. Picked so a user with a fresh API
+// key gets a working setup without having to tune three fields.
+const DEFAULT_MODELS = {
+  openai:    { chat: 'gpt-4o',                       shell: 'gpt-4o',                       logs: 'gpt-4o' },
+  anthropic: { chat: 'claude-sonnet-4-6',            shell: 'claude-haiku-4-5-20251001',    logs: 'claude-opus-4-7' },
+};
+
+function providerOf(config) {
+  const explicit = ((config.ai && config.ai.provider) || '').toLowerCase();
+  if (explicit === 'anthropic' || explicit === 'openai') return explicit;
+  const url = (config.ai && config.ai.baseUrl) || '';
+  if (/anthropic\.com/i.test(url)) return 'anthropic';
+  return 'openai';
+}
+
+function modelFor(config, kind) {
+  const p = providerOf(config);
+  const explicit = config.ai && config.ai[`${kind}Model`];
+  return explicit || DEFAULT_MODELS[p][kind];
+}
+
+function isConfigured(config) {
+  // Local servers (Ollama, llama.cpp) often need no apiKey — only baseUrl.
+  // Treat AI as enabled whenever EITHER is set.
+  return !!(config.ai && (config.ai.apiKey || config.ai.baseUrl));
+}
+
+// ── OpenAI: endpoint + headers ─────────────────────────────────────────────
 function endpoint(config) {
   const base = (config.ai && config.ai.baseUrl) || 'https://api.openai.com/v1';
   return base.replace(/\/+$/, '') + '/chat/completions';
@@ -55,15 +98,27 @@ function authHeaders(config) {
   return headers;
 }
 
-function isConfigured(config) {
-  // Local servers (Ollama, llama.cpp) often need no apiKey — only baseUrl.
-  // Treat AI as enabled whenever EITHER is set.
-  return !!(config.ai && (config.ai.apiKey || config.ai.baseUrl));
+// ── Anthropic: endpoint + headers ──────────────────────────────────────────
+function anthropicEndpoint(config) {
+  let base = (config.ai && config.ai.baseUrl) || 'https://api.anthropic.com';
+  base = base.replace(/\/+$/, '');
+  // Allow either "https://api.anthropic.com" or "...com/v1" in baseUrl.
+  if (!/\/v1$/.test(base)) base += '/v1';
+  return base + '/messages';
 }
 
+function anthropicHeaders(config) {
+  const headers = {
+    'content-type':      'application/json',
+    'anthropic-version': '2023-06-01',
+  };
+  const key = config.ai && config.ai.apiKey;
+  if (key) headers['x-api-key'] = key;
+  return headers;
+}
+
+// ── Shared: live-context snapshot ───────────────────────────────────────────
 async function buildContextSnapshot() {
-  // Best-effort. Failures degrade silently — chat still works, just without
-  // live context.
   const snapshot = {};
   const [stats, containers] = await Promise.allSettled([
     system.getStats(),
@@ -96,63 +151,41 @@ function formatContextMessage(snapshot) {
   return lines.join('\n');
 }
 
-// ── Read-only tools the model may call during chat ─────────────────────────
+// ── Read-only tools the model may call during chat (OpenAI format) ──────────
 const CHAT_TOOLS = [
-  {
-    type: 'function',
-    function: {
-      name: 'getSystemStats',
+  { type: 'function', function: { name: 'getSystemStats',
       description: 'Return current CPU/RAM/disk/network/uptime/load averages.',
-      parameters: { type: 'object', properties: {}, additionalProperties: false },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'getProcesses',
+      parameters: { type: 'object', properties: {}, additionalProperties: false } } },
+  { type: 'function', function: { name: 'getProcesses',
       description: 'Return the top-20 processes by CPU as {user, pid, cpu, mem, cmd}.',
-      parameters: { type: 'object', properties: {}, additionalProperties: false },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'listContainers',
+      parameters: { type: 'object', properties: {}, additionalProperties: false } } },
+  { type: 'function', function: { name: 'listContainers',
       description: 'Return all Docker containers as {id, name, image, status, state}.',
-      parameters: { type: 'object', properties: {}, additionalProperties: false },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'containerLogs',
+      parameters: { type: 'object', properties: {}, additionalProperties: false } } },
+  { type: 'function', function: { name: 'containerLogs',
       description: 'Return the last 100 log lines for a container by name or id.',
       parameters: {
-        type: 'object',
-        additionalProperties: false,
-        properties: {
-          nameOrId: { type: 'string', description: 'Container name (e.g. "emby") or short id.' },
-        },
+        type: 'object', additionalProperties: false,
+        properties: { nameOrId: { type: 'string', description: 'Container name (e.g. "emby") or short id.' } },
         required: ['nameOrId'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'mediaStatus',
+      } } },
+  { type: 'function', function: { name: 'mediaStatus',
       description: 'Return a summary for a media service (emby | radarr | sonarr).',
       parameters: {
-        type: 'object',
-        additionalProperties: false,
-        properties: {
-          service: { type: 'string', enum: ['emby', 'radarr', 'sonarr'] },
-        },
+        type: 'object', additionalProperties: false,
+        properties: { service: { type: 'string', enum: ['emby', 'radarr', 'sonarr'] } },
         required: ['service'],
-      },
-    },
-  },
+      } } },
 ];
+
+// Anthropic uses a flat tool shape.
+function toAnthropicTools(openaiTools) {
+  return openaiTools.map(t => ({
+    name: t.function.name,
+    description: t.function.description,
+    input_schema: t.function.parameters,
+  }));
+}
 
 async function executeTool(name, args, config) {
   switch (name) {
@@ -168,7 +201,6 @@ async function executeTool(name, args, config) {
                                   || c.id.startsWith(args.nameOrId));
       if (!target) throw new Error(`container "${args.nameOrId}" not found`);
       const logs = await docker.getLogs(target.id);
-      // Limit to last 100 lines / 8KB to keep a single tool result bounded.
       const lines = logs.split('\n').slice(-100).join('\n');
       return { name: target.name, id: target.id, logs: lines.slice(-8192) };
     }
@@ -191,15 +223,17 @@ class UpstreamError extends Error {
   }
 }
 
-// Yields raw upstream {choice, usage} events parsed out of the SSE stream.
-async function* streamRawSSE(config, body) {
+// ════════════════════════════════════════════════════════════════════════════
+// OPENAI PROVIDER
+// ════════════════════════════════════════════════════════════════════════════
+
+async function* openaiStreamRawSSE(config, body) {
   const res = await fetch(endpoint(config), {
     method: 'POST',
     headers: authHeaders(config),
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    // Drain the body so the upstream connection can close, but never echo it.
     await res.text().catch(() => '');
     throw new UpstreamError(res.status, res.headers && res.headers.get && res.headers.get('retry-after'));
   }
@@ -224,7 +258,7 @@ async function* streamRawSSE(config, body) {
   }
 }
 
-async function* streamChat(config, messages, opts) {
+async function* openaiStreamChat(config, messages, opts) {
   const sysMessages = [{ role: 'system', content: SYSTEM_CHAT }];
   if (opts && opts.includeContext) {
     try {
@@ -241,17 +275,17 @@ async function* streamChat(config, messages, opts) {
 
   for (let iter = 0; iter < maxIterations; iter++) {
     const body = {
-      model:    (config.ai && config.ai.chatModel) || 'gpt-4o',
+      model:    modelFor(config, 'chat'),
       messages: history,
       stream:   true,
     };
     if (useTools) body.tools = CHAT_TOOLS;
 
     let assistantContent = '';
-    const toolCalls = []; // [{id, name, arguments}]
+    const toolCalls = [];
     let finishReason = null;
 
-    for await (const evt of streamRawSSE(config, body)) {
+    for await (const evt of openaiStreamRawSSE(config, body)) {
       if (evt.usage) lastUsage = evt.usage;
       const choice = evt.choices && evt.choices[0];
       if (!choice) continue;
@@ -279,7 +313,6 @@ async function* streamChat(config, messages, opts) {
       return;
     }
 
-    // Echo assistant turn back into history with the tool_calls array verbatim.
     history.push({
       role: 'assistant',
       content: assistantContent || null,
@@ -290,7 +323,6 @@ async function* streamChat(config, messages, opts) {
       })),
     });
 
-    // Execute each tool serially, surface progress to the frontend, append results.
     for (const tc of toolCalls) {
       yield { tool_call_start: { id: tc.id, name: tc.name, arguments: tc.arguments } };
       let result, ok = true;
@@ -310,61 +342,11 @@ async function* streamChat(config, messages, opts) {
     }
   }
 
-  // Hit the iteration cap without a clean end — tell the frontend, then close.
   yield { error: `tool-call loop exceeded ${maxIterations} iterations` };
   yield { done: true, usage: lastUsage };
 }
 
-async function* streamLogAnalysis(config, lines) {
-  yield* streamCompletions(config, {
-    model:    (config.ai && config.ai.logModel) || 'gpt-4o',
-    messages: [
-      { role: 'system', content: SYSTEM_LOGS },
-      { role: 'user',   content: lines.join('\n').slice(0, 50_000) },
-    ],
-    stream: true,
-  });
-}
-
-async function suggestShell(config, intent) {
-  const body = {
-    model:    (config.ai && config.ai.shellModel) || 'gpt-4o',
-    messages: [
-      { role: 'system', content: SYSTEM_SHELL },
-      { role: 'user',   content: intent },
-    ],
-    response_format: { type: 'json_schema', json_schema: SHELL_SCHEMA },
-    temperature: 0,
-  };
-  let res;
-  try {
-    res = await axios.post(endpoint(config), body, {
-      headers: authHeaders(config),
-      timeout: 20000,
-    });
-  } catch (err) {
-    if (err.response) {
-      const ra = err.response.headers && err.response.headers['retry-after'];
-      throw new UpstreamError(err.response.status, ra);
-    }
-    throw err;
-  }
-  const text = (res.data && res.data.choices && res.data.choices[0]
-                && res.data.choices[0].message && res.data.choices[0].message.content) || '';
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('AI returned no JSON');
-  let parsed;
-  try { parsed = JSON.parse(match[0]); }
-  catch (_) { throw new Error('AI returned malformed shell suggestion'); }
-  if (typeof parsed.command !== 'string' || typeof parsed.explanation !== 'string'
-      || !['safe', 'caution', 'destructive'].includes(parsed.danger)) {
-    throw new Error('AI returned malformed shell suggestion');
-  }
-  return parsed;
-}
-
-// Internal — converts an OpenAI-compat SSE stream into our envelope.
-async function* streamCompletions(config, body) {
+async function* openaiStreamCompletions(config, body) {
   const res = await fetch(endpoint(config), {
     method: 'POST',
     headers: authHeaders(config),
@@ -399,7 +381,330 @@ async function* streamCompletions(config, body) {
   yield { done: true, usage };
 }
 
+async function openaiSuggestShell(config, intent) {
+  const body = {
+    model:    modelFor(config, 'shell'),
+    messages: [
+      { role: 'system', content: SYSTEM_SHELL },
+      { role: 'user',   content: intent },
+    ],
+    response_format: { type: 'json_schema', json_schema: SHELL_SCHEMA },
+    temperature: 0,
+  };
+  let res;
+  try {
+    res = await axios.post(endpoint(config), body, {
+      headers: authHeaders(config),
+      timeout: 20000,
+    });
+  } catch (err) {
+    if (err.response) {
+      const ra = err.response.headers && err.response.headers['retry-after'];
+      throw new UpstreamError(err.response.status, ra);
+    }
+    throw err;
+  }
+  const text = (res.data && res.data.choices && res.data.choices[0]
+                && res.data.choices[0].message && res.data.choices[0].message.content) || '';
+  return parseShellSuggestion(text);
+}
+
+function parseShellSuggestion(text) {
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('AI returned no JSON');
+  let parsed;
+  try { parsed = JSON.parse(match[0]); }
+  catch (_) { throw new Error('AI returned malformed shell suggestion'); }
+  if (typeof parsed.command !== 'string' || typeof parsed.explanation !== 'string'
+      || !['safe', 'caution', 'destructive'].includes(parsed.danger)) {
+    throw new Error('AI returned malformed shell suggestion');
+  }
+  return parsed;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ANTHROPIC PROVIDER
+// ════════════════════════════════════════════════════════════════════════════
+
+// Convert OpenAI-style {role:'system'|'user'|'assistant'|'tool', content, tool_calls?}
+// messages into Anthropic's {system, messages: [{role:'user'|'assistant', content}]}
+// shape. System prompts are merged. Tool turns become tool_result content blocks
+// inside a user message; assistant tool_calls become tool_use content blocks.
+function toAnthropicMessages(openaiMessages) {
+  const systemParts = [];
+  const out = [];
+  for (const m of openaiMessages) {
+    if (m.role === 'system') {
+      if (m.content) systemParts.push(m.content);
+      continue;
+    }
+    if (m.role === 'tool') {
+      const block = { type: 'tool_result', tool_use_id: m.tool_call_id, content: m.content };
+      const last = out[out.length - 1];
+      if (last && last.role === 'user' && Array.isArray(last.content)) {
+        last.content.push(block);
+      } else {
+        out.push({ role: 'user', content: [block] });
+      }
+      continue;
+    }
+    if (m.role === 'assistant' && Array.isArray(m.tool_calls) && m.tool_calls.length) {
+      const blocks = [];
+      if (m.content) blocks.push({ type: 'text', text: m.content });
+      for (const tc of m.tool_calls) {
+        let input = {};
+        try { input = JSON.parse(tc.function.arguments || '{}'); } catch (_) {}
+        blocks.push({ type: 'tool_use', id: tc.id, name: tc.function.name, input });
+      }
+      out.push({ role: 'assistant', content: blocks });
+      continue;
+    }
+    out.push({ role: m.role, content: m.content });
+  }
+  return { system: systemParts.join('\n\n') || undefined, messages: out };
+}
+
+async function* anthropicStreamRawSSE(config, body) {
+  const res = await fetch(anthropicEndpoint(config), {
+    method: 'POST',
+    headers: anthropicHeaders(config),
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    await res.text().catch(() => '');
+    throw new UpstreamError(res.status, res.headers && res.headers.get && res.headers.get('retry-after'));
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  let event = '';
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) return;
+    buf += decoder.decode(value, { stream: true });
+    const lines = buf.split('\n');
+    buf = lines.pop();
+    for (const raw of lines) {
+      const line = raw.replace(/\r$/, '');
+      if (line === '') { event = ''; continue; }
+      if (line.startsWith('event:')) { event = line.slice(6).trim(); continue; }
+      if (!line.startsWith('data:')) continue;
+      const payload = line.slice(5).trim();
+      if (!payload) continue;
+      let evt;
+      try { evt = JSON.parse(payload); } catch (_) { continue; }
+      yield { type: event || evt.type, data: evt };
+    }
+  }
+}
+
+async function* anthropicStreamChat(config, messages, opts) {
+  const ctxBlocks = [SYSTEM_CHAT];
+  if (opts && opts.includeContext) {
+    try {
+      const snapshot = await buildContextSnapshot();
+      const block = formatContextMessage(snapshot);
+      if (block) ctxBlocks.push(block);
+    } catch (_) { /* context optional */ }
+  }
+
+  const useTools = !(opts && opts.useTools === false);
+  const maxIterations = (opts && opts.maxIterations) || 5;
+  // History stays in OpenAI shape internally; we convert per request so the
+  // tool-loop bookkeeping is identical to the OpenAI path.
+  const history = [
+    ...ctxBlocks.map(c => ({ role: 'system', content: c })),
+    ...messages,
+  ];
+  let lastUsage = null;
+
+  for (let iter = 0; iter < maxIterations; iter++) {
+    const { system: sys, messages: anthroMsgs } = toAnthropicMessages(history);
+    const body = {
+      model:      modelFor(config, 'chat'),
+      max_tokens: (config.ai && config.ai.maxTokens) || 4096,
+      messages:   anthroMsgs,
+      stream:     true,
+    };
+    if (sys) body.system = sys;
+    if (useTools) body.tools = toAnthropicTools(CHAT_TOOLS);
+
+    let assistantText = '';
+    // Per-index tool_use accumulators: [{id, name, partialJson}]
+    const blocks = [];
+    let stopReason = null;
+
+    for await (const ev of anthropicStreamRawSSE(config, body)) {
+      const { type, data } = ev;
+      if (type === 'content_block_start') {
+        const cb = data.content_block || {};
+        blocks[data.index] = cb.type === 'tool_use'
+          ? { kind: 'tool_use', id: cb.id, name: cb.name, partialJson: '' }
+          : { kind: 'text', text: '' };
+      } else if (type === 'content_block_delta') {
+        const d = data.delta || {};
+        const b = blocks[data.index];
+        if (!b) continue;
+        if (d.type === 'text_delta' && b.kind === 'text') {
+          b.text += d.text;
+          assistantText += d.text;
+          yield { delta: d.text };
+        } else if (d.type === 'input_json_delta' && b.kind === 'tool_use') {
+          b.partialJson += d.partial_json || '';
+        }
+      } else if (type === 'message_delta') {
+        if (data.usage) lastUsage = { ...lastUsage, ...data.usage };
+        if (data.delta && data.delta.stop_reason) stopReason = data.delta.stop_reason;
+      } else if (type === 'message_stop') {
+        // terminal
+      } else if (type === 'error') {
+        const msg = (data.error && data.error.message) || 'anthropic error';
+        throw new Error(msg);
+      }
+    }
+
+    const toolUses = blocks.filter(Boolean).filter(b => b.kind === 'tool_use');
+    if (stopReason !== 'tool_use' || toolUses.length === 0) {
+      yield { done: true, usage: lastUsage };
+      return;
+    }
+
+    // Echo assistant turn into history.
+    history.push({
+      role: 'assistant',
+      content: assistantText || null,
+      tool_calls: toolUses.map(tu => ({
+        id: tu.id,
+        type: 'function',
+        function: { name: tu.name, arguments: tu.partialJson || '{}' },
+      })),
+    });
+
+    for (const tu of toolUses) {
+      yield { tool_call_start: { id: tu.id, name: tu.name, arguments: tu.partialJson } };
+      let result, ok = true;
+      try {
+        const args = tu.partialJson ? JSON.parse(tu.partialJson) : {};
+        result = await executeTool(tu.name, args, config);
+      } catch (err) {
+        result = { error: err.message };
+        ok = false;
+      }
+      yield { tool_call_result: { id: tu.id, name: tu.name, ok } };
+      history.push({
+        role: 'tool',
+        tool_call_id: tu.id,
+        content: JSON.stringify(result).slice(0, 16384),
+      });
+    }
+  }
+
+  yield { error: `tool-call loop exceeded ${maxIterations} iterations` };
+  yield { done: true, usage: lastUsage };
+}
+
+async function* anthropicStreamLogAnalysis(config, lines) {
+  const body = {
+    model:      modelFor(config, 'logs'),
+    max_tokens: (config.ai && config.ai.maxTokens) || 2048,
+    system:     SYSTEM_LOGS,
+    messages:   [{ role: 'user', content: lines.join('\n').slice(0, 50_000) }],
+    stream:     true,
+  };
+  let usage = null;
+  for await (const ev of anthropicStreamRawSSE(config, body)) {
+    const { type, data } = ev;
+    if (type === 'content_block_delta' && data.delta && data.delta.type === 'text_delta') {
+      yield { delta: data.delta.text };
+    } else if (type === 'message_delta' && data.usage) {
+      usage = { ...usage, ...data.usage };
+    } else if (type === 'error') {
+      throw new Error((data.error && data.error.message) || 'anthropic error');
+    }
+  }
+  yield { done: true, usage };
+}
+
+// Anthropic doesn't have json_schema response_format. We get strict output
+// by forcing a tool call against a tool whose input_schema IS the desired
+// shape. The tool never actually executes — we just read its input back.
+const ANTHROPIC_SHELL_TOOL = {
+  name:        'submit_shell_suggestion',
+  description: 'Submit a structured shell command suggestion to the user.',
+  input_schema: SHELL_SCHEMA.schema,
+};
+
+async function anthropicSuggestShell(config, intent) {
+  const body = {
+    model:      modelFor(config, 'shell'),
+    max_tokens: (config.ai && config.ai.maxTokens) || 1024,
+    system:     SYSTEM_SHELL,
+    messages:   [{ role: 'user', content: intent }],
+    tools:      [ANTHROPIC_SHELL_TOOL],
+    tool_choice: { type: 'tool', name: ANTHROPIC_SHELL_TOOL.name },
+  };
+  let res;
+  try {
+    res = await axios.post(anthropicEndpoint(config), body, {
+      headers: anthropicHeaders(config),
+      timeout: 20000,
+    });
+  } catch (err) {
+    if (err.response) {
+      const ra = err.response.headers && err.response.headers['retry-after'];
+      throw new UpstreamError(err.response.status, ra);
+    }
+    throw err;
+  }
+  const blocks = (res.data && res.data.content) || [];
+  const toolUse = blocks.find(b => b.type === 'tool_use');
+  if (toolUse && toolUse.input && typeof toolUse.input === 'object') {
+    // Validate the shape the same way the openai path does.
+    return parseShellSuggestion(JSON.stringify(toolUse.input));
+  }
+  // Fallback: scrape any text content for JSON.
+  const text = blocks.filter(b => b.type === 'text').map(b => b.text).join('\n');
+  return parseShellSuggestion(text);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// PUBLIC DISPATCHERS
+// ════════════════════════════════════════════════════════════════════════════
+
+async function* streamChat(config, messages, opts) {
+  if (providerOf(config) === 'anthropic') {
+    yield* anthropicStreamChat(config, messages, opts);
+  } else {
+    yield* openaiStreamChat(config, messages, opts);
+  }
+}
+
+async function* streamLogAnalysis(config, lines) {
+  if (providerOf(config) === 'anthropic') {
+    yield* anthropicStreamLogAnalysis(config, lines);
+  } else {
+    yield* openaiStreamCompletions(config, {
+      model:    modelFor(config, 'logs'),
+      messages: [
+        { role: 'system', content: SYSTEM_LOGS },
+        { role: 'user',   content: lines.join('\n').slice(0, 50_000) },
+      ],
+      stream: true,
+    });
+  }
+}
+
+async function suggestShell(config, intent) {
+  if (providerOf(config) === 'anthropic') return anthropicSuggestShell(config, intent);
+  return openaiSuggestShell(config, intent);
+}
+
 module.exports = {
   isConfigured, streamChat, suggestShell, streamLogAnalysis, UpstreamError,
-  _internals: { endpoint, authHeaders, SHELL_SCHEMA, executeTool, CHAT_TOOLS, formatContextMessage },
+  providerOf,
+  _internals: {
+    endpoint, authHeaders, anthropicEndpoint, anthropicHeaders,
+    SHELL_SCHEMA, executeTool, CHAT_TOOLS, formatContextMessage,
+    toAnthropicMessages, toAnthropicTools, modelFor,
+  },
 };

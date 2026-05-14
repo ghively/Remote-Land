@@ -8,10 +8,23 @@
     "sonarr": { "url": "http://localhost:8989", "apiKey": "" }
   },
   "ai": {
-    "baseUrl":    "https://api.openai.com/v1",
+    "_comment_provider": "Set 'anthropic' for the native Anthropic Messages API, or 'openai' for any OpenAI Chat Completions-compatible endpoint (OpenAI, Ollama, LiteLLM). Auto-detected from baseUrl if omitted.",
+    "provider":   "anthropic",
+    "baseUrl":    "https://api.anthropic.com",
     "apiKey":     "",
-    "chatModel":  "gpt-4o",
-    "shellModel": "gpt-4o",
-    "logModel":   "gpt-4o"
+    "chatModel":  "claude-sonnet-4-6",
+    "shellModel": "claude-haiku-4-5-20251001",
+    "logModel":   "claude-opus-4-7",
+    "maxTokens":  4096,
+
+    "_comment_openai_example": "To use OpenAI instead, replace the ai block with the contents of _openai_example below.",
+    "_openai_example": {
+      "provider":   "openai",
+      "baseUrl":    "https://api.openai.com/v1",
+      "apiKey":     "sk-...",
+      "chatModel":  "gpt-4o",
+      "shellModel": "gpt-4o",
+      "logModel":   "gpt-4o"
+    }
   }
 }
