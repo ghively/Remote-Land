@@ -37,7 +37,7 @@ function FBtn({ label, cls = '', onClick, disabled, title }) {
   return <button className={`cmd-btn-sm ${cls}`} onClick={onClick} disabled={disabled} title={title}>{label}</button>;
 }
 function FProgress({ pct, color = 'green' }) {
-  const colors = { green: 'var(--neon-green)', yellow: '#ffbd2e', red: '#ff5f56', cyan: 'var(--neon-cyan)', purple: 'var(--neon-purple)' };
+  const colors = { green: 'var(--neon-green)', yellow: 'var(--color-warn)', red: 'var(--color-error)', cyan: 'var(--neon-cyan)', purple: 'var(--neon-purple)' };
   return (
     <div style={{ flex: 1, height: 8, background: 'rgba(0,255,0,0.08)', border: '1px solid rgba(0,255,0,0.15)', borderRadius: 2, overflow: 'hidden' }}>
       <div style={{ width: `${Math.min(100, Math.max(0, pct))}%`, height: '100%', background: colors[color] || colors.green, transition: 'width 0.5s', boxShadow: `0 0 4px ${colors[color] || colors.green}` }} />
@@ -71,7 +71,7 @@ function MovieDetail({ movie, onClose, onDelete, onSearch, onToggleMonitor }) {
         {/* Header info */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
           {[
-            { k: 'STATUS',   v: movie.hasFile ? 'DOWNLOADED' : 'MISSING', color: movie.hasFile ? '#27c93f' : '#ff5f56' },
+            { k: 'STATUS',   v: movie.hasFile ? 'DOWNLOADED' : 'MISSING', color: movie.hasFile ? 'var(--color-success)' : 'var(--color-error)' },
             { k: 'YEAR',     v: movie.year },
             { k: 'RUNTIME',  v: `${movie.runtime || '?'} min` },
             { k: 'STUDIO',   v: movie.studio || 'Unknown' },
@@ -245,8 +245,8 @@ function RadarrPanelFull({ onOpenWebUI }) {
       <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid rgba(0,255,0,0.06)', flexShrink: 0, background: 'rgba(0,0,0,0.4)' }}>
         {[
           { label: 'TOTAL',      val: movies.length,                  color: 'var(--text-primary)' },
-          { label: 'DOWNLOADED', val: downloaded,                     color: '#27c93f' },
-          { label: 'MISSING',    val: missing,                        color: '#ff5f56' },
+          { label: 'DOWNLOADED', val: downloaded,                     color: 'var(--color-success)' },
+          { label: 'MISSING',    val: missing,                        color: 'var(--color-error)' },
           { label: 'QUEUE',      val: queue.length,                   color: 'var(--neon-cyan)' },
           { label: 'LIBRARY SIZE', val: fmtBytes(totalSize),          color: 'var(--neon-purple)' },
         ].map(s => (
@@ -280,7 +280,7 @@ function RadarrPanelFull({ onOpenWebUI }) {
                 onMouseLeave={e => e.currentTarget.style.background='transparent'}
                 onClick={() => setDetail(m)}
               >
-                <span style={{ color: m.hasFile ? '#27c93f' : m.monitored ? '#ff5f56' : 'var(--text-dim)', fontSize: '0.75rem', width: 10, flexShrink: 0 }}>●</span>
+                <span style={{ color: m.hasFile ? 'var(--color-success)' : m.monitored ? 'var(--color-error)' : 'var(--text-dim)', fontSize: '0.75rem', width: 10, flexShrink: 0 }}>●</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: '0.82rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 'bold' }}>{m.title}</div>
                   <div style={{ fontSize: '0.67rem', color: 'var(--text-dim)', display: 'flex', gap: 8 }}>
@@ -321,7 +321,7 @@ function RadarrPanelFull({ onOpenWebUI }) {
                         </div>
                       </div>
                       <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                        <span style={{ fontSize: '0.68rem', color: item.status==='downloading'?'var(--neon-cyan)':'#ffbd2e' }}>{item.status?.toUpperCase()}</span>
+                        <span style={{ fontSize: '0.68rem', color: item.status==='downloading'?'var(--neon-cyan)':'var(--color-warn)' }}>{item.status?.toUpperCase()}</span>
                         <FBtn label="[✕]" cls="danger" onClick={() => deleteQueueItem(item.id)} title="Remove" />
                       </div>
                     </div>
@@ -461,7 +461,7 @@ function SeriesDetail({ series, onClose, onToggleMonitor }) {
           <div key={ep.episodeNumber} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 12px', borderBottom: '1px solid rgba(0,255,0,0.04)', transition: 'background 0.1s' }}
             onMouseEnter={e => e.currentTarget.style.background='rgba(0,255,0,0.03)'}
             onMouseLeave={e => e.currentTarget.style.background='transparent'}>
-            <span style={{ color: ep.hasFile ? '#27c93f' : '#ff5f56', fontSize: '0.75rem', width: 10, flexShrink: 0 }}>●</span>
+            <span style={{ color: ep.hasFile ? 'var(--color-success)' : 'var(--color-error)', fontSize: '0.75rem', width: 10, flexShrink: 0 }}>●</span>
             <span style={{ color: 'var(--neon-purple)', fontSize: '0.75rem', width: 50, flexShrink: 0 }}>S{String(selSeason).padStart(2,'0')}E{String(ep.episodeNumber).padStart(2,'0')}</span>
             <span style={{ flex: 1, fontSize: '0.8rem', color: 'var(--text-primary)' }}>{ep.title}</span>
             <span style={{ fontSize: '0.67rem', color: 'var(--text-dim)', flexShrink: 0 }}>{ep.airDate}</span>
@@ -564,8 +564,8 @@ function SonarrPanelFull({ onOpenWebUI }) {
       <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid rgba(0,255,0,0.06)', flexShrink: 0, background: 'rgba(0,0,0,0.4)' }}>
         {[
           { label: 'SERIES',   val: series.length,                        color: 'var(--text-primary)' },
-          { label: 'EPISODES', val: `${haveEps}/${totalEps}`,             color: '#27c93f' },
-          { label: 'MISSING',  val: totalEps - haveEps,                   color: '#ff5f56' },
+          { label: 'EPISODES', val: `${haveEps}/${totalEps}`,             color: 'var(--color-success)' },
+          { label: 'MISSING',  val: totalEps - haveEps,                   color: 'var(--color-error)' },
           { label: 'QUEUE',    val: queue.length,                         color: 'var(--neon-cyan)' },
           { label: 'SIZE',     val: fmtBytes(totalSize),                  color: 'var(--neon-purple)' },
         ].map(s => (
@@ -601,7 +601,7 @@ function SonarrPanelFull({ onOpenWebUI }) {
                   onClick={() => setDetail(s)}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                    <span style={{ color: complete ? '#27c93f' : '#ffbd2e', fontSize: '0.75rem', width: 10, flexShrink: 0 }}>●</span>
+                    <span style={{ color: complete ? 'var(--color-success)' : 'var(--color-warn)', fontSize: '0.75rem', width: 10, flexShrink: 0 }}>●</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: '0.82rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 'bold' }}>{s.title}</div>
                       <div style={{ fontSize: '0.67rem', color: 'var(--text-dim)', display: 'flex', gap: 8 }}>
@@ -617,7 +617,7 @@ function SonarrPanelFull({ onOpenWebUI }) {
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 18 }}>
                     <FProgress pct={pct} color={complete ? 'green' : 'yellow'} />
-                    <span style={{ fontSize: '0.68rem', color: complete ? '#27c93f' : '#ffbd2e', width: 34, textAlign: 'right', flexShrink: 0 }}>{pct.toFixed(0)}%</span>
+                    <span style={{ fontSize: '0.68rem', color: complete ? 'var(--color-success)' : 'var(--color-warn)', width: 34, textAlign: 'right', flexShrink: 0 }}>{pct.toFixed(0)}%</span>
                   </div>
                 </div>
               );
@@ -645,7 +645,7 @@ function SonarrPanelFull({ onOpenWebUI }) {
                         </div>
                       </div>
                       <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                        <span style={{ fontSize: '0.68rem', color: item.status==='downloading'?'var(--neon-cyan)':'#ffbd2e' }}>{item.status?.toUpperCase()}</span>
+                        <span style={{ fontSize: '0.68rem', color: item.status==='downloading'?'var(--neon-cyan)':'var(--color-warn)' }}>{item.status?.toUpperCase()}</span>
                         <FBtn label="[✕]" cls="danger" onClick={() => deleteQueueItem(item.id)} />
                       </div>
                     </div>
@@ -783,14 +783,17 @@ function SABnzbdPanelFull({ onOpenWebUI }) {
     setLoading(false);
   }, [hasKey, cfg]);
 
-  useEffect(() => { load(); const iv = setInterval(load, 8000); return () => clearInterval(iv); }, [load]);
+  usePoller(load, 8000, true);
 
   const doPause = async () => {
     try {
-      if (hasKey) await sabFetch(cfg.sabnzbd.url, cfg.sabnzbd.apiKey, { mode: paused ? 'resume' : 'pause' });
       setPaused(p => !p);
+      setQueueData(q => q ? { ...q, status: paused ? 'Downloading' : 'Paused' } : q);
       notify(paused ? '> DOWNLOADS RESUMED' : '> DOWNLOADS PAUSED');
-    } catch {}
+      if (hasKey) await sabFetch(cfg.sabnzbd.url, cfg.sabnzbd.apiKey, { mode: paused ? 'resume' : 'pause' });
+    } catch {
+      setPaused(p => !p);
+    }
   };
 
   const doDelete = async (id) => {
@@ -850,14 +853,14 @@ function SABnzbdPanelFull({ onOpenWebUI }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', position: 'relative' }}>
       {notification && (
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, background: 'rgba(255,189,46,0.15)', borderBottom: '1px solid #ffbd2e', padding: '4px 12px', fontSize: '0.75rem', color: '#ffbd2e', zIndex: 20, letterSpacing: 1 }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, background: 'rgba(255,189,46,0.15)', borderBottom: '1px solid var(--color-warn)', padding: '4px 12px', fontSize: '0.75rem', color: 'var(--color-warn)', zIndex: 20, letterSpacing: 1 }}>
           {notification}
         </div>
       )}
 
       {/* Toolbar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 10px', borderBottom: '1px solid rgba(0,255,0,0.1)', background: 'rgba(0,0,0,0.6)', flexShrink: 0, flexWrap: 'wrap' }}>
-        <span style={{ color: '#ffbd2e', fontSize: '0.8rem', fontWeight: 'bold', letterSpacing: 2, textShadow: '0 0 5px #ffbd2e' }}>[SABNZBD]</span>
+        <span style={{ color: 'var(--color-warn)', fontSize: '0.8rem', fontWeight: 'bold', letterSpacing: 2, textShadow: '0 0 5px var(--color-warn)' }}>[SABNZBD]</span>
         {['queue','history','stats'].map(t => (
           <FBtn key={t} label={`[${t.toUpperCase()}]`} cls={tab===t?'cyan':''} onClick={() => setTab(t)} />
         ))}
@@ -872,7 +875,7 @@ function SABnzbdPanelFull({ onOpenWebUI }) {
       {queueData && (
         <div style={{ padding: '7px 12px', borderBottom: '1px solid rgba(0,255,0,0.06)', background: 'rgba(0,0,0,0.5)', flexShrink: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5, fontSize: '0.75rem', flexWrap: 'wrap', gap: 6 }}>
-            <span style={{ color: paused ? '#ffbd2e' : '#27c93f', fontWeight: 'bold' }}>
+            <span style={{ color: paused ? 'var(--color-warn)' : 'var(--color-success)', fontWeight: 'bold' }}>
               {paused ? '⏸ PAUSED' : `▶ ${queueData.status?.toUpperCase()}`}
             </span>
             <span style={{ color: 'var(--neon-cyan)', textShadow: 'var(--bloom-cyan)' }}>
@@ -916,17 +919,17 @@ function SABnzbdPanelFull({ onOpenWebUI }) {
                   <div key={slot.nzo_id} style={{ background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(0,255,0,0.12)', borderRadius: 4, padding: '8px 10px', marginBottom: 6 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 5 }}>
                       <div style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
-                        <div style={{ color: '#ffbd2e', fontSize: '0.78rem', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textShadow: '0 0 4px #ffbd2e' }}>{slot.filename}</div>
+                        <div style={{ color: 'var(--color-warn)', fontSize: '0.78rem', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textShadow: '0 0 4px var(--color-warn)' }}>{slot.filename}</div>
                         <div style={{ fontSize: '0.67rem', color: 'var(--text-dim)', display: 'flex', gap: 8, marginTop: 2, flexWrap: 'wrap' }}>
                           <span style={{ color: 'var(--neon-purple)' }}>[{slot.cat}]</span>
                           <span>AGE: {slot.avg_age}</span>
                           <span>ETA: {slot.timeleft}</span>
                           <span>{fmtMB(slot.mbleft)} / {fmtMB(slot.mb)}</span>
-                          <span style={{ color: slot.priority === 'High' ? '#27c93f' : 'var(--text-dim)' }}>PRI: {slot.priority}</span>
+                          <span style={{ color: slot.priority === 'High' ? 'var(--color-success)' : 'var(--text-dim)' }}>PRI: {slot.priority}</span>
                         </div>
                       </div>
                       <div style={{ display: 'flex', gap: 3, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                        <span style={{ fontSize: '0.67rem', color: slot.status==='Downloading'?'var(--neon-cyan)':'#ffbd2e', alignSelf: 'center' }}>{slot.status}</span>
+                        <span style={{ fontSize: '0.67rem', color: slot.status==='Downloading'?'var(--neon-cyan)':'var(--color-warn)', alignSelf: 'center' }}>{slot.status}</span>
                         <FBtn label="[↑]" onClick={() => movePriority(slot.nzo_id, 'up')} title="Move up" />
                         <FBtn label="[↓]" onClick={() => movePriority(slot.nzo_id, 'down')} title="Move down" />
                         <FBtn label="[✕]" cls="danger" onClick={() => doDelete(slot.nzo_id)} title="Remove" />
@@ -934,7 +937,7 @@ function SABnzbdPanelFull({ onOpenWebUI }) {
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <FProgress pct={pct} color={slot.status==='Downloading'?'yellow':'dim'} />
-                      <span style={{ fontSize: '0.7rem', color: '#ffbd2e', width: 34, textAlign: 'right', flexShrink: 0 }}>{pct.toFixed(0)}%</span>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--color-warn)', width: 34, textAlign: 'right', flexShrink: 0 }}>{pct.toFixed(0)}%</span>
                     </div>
                   </div>
                 );
@@ -952,18 +955,18 @@ function SABnzbdPanelFull({ onOpenWebUI }) {
               <div key={item.nzo_id || i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 12px', borderBottom: '1px solid rgba(0,255,0,0.04)', transition: 'background 0.1s' }}
                 onMouseEnter={e => e.currentTarget.style.background='rgba(0,255,0,0.03)'}
                 onMouseLeave={e => e.currentTarget.style.background='transparent'}>
-                <span style={{ color: item.status === 'Completed' ? '#27c93f' : '#ff5f56', fontSize: '0.75rem', flexShrink: 0 }}>●</span>
+                <span style={{ color: item.status === 'Completed' ? 'var(--color-success)' : 'var(--color-error)', fontSize: '0.75rem', flexShrink: 0 }}>●</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: '0.78rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
                   <div style={{ fontSize: '0.66rem', color: 'var(--text-dim)', display: 'flex', gap: 8 }}>
                     <span>{ts}</span>
                     <span style={{ color: 'var(--neon-purple)' }}>[{item.category}]</span>
                     <span>{item.size}</span>
-                    {item.fail_message && <span style={{ color: '#ff5f56' }}>{item.fail_message}</span>}
+                    {item.fail_message && <span style={{ color: 'var(--color-error)' }}>{item.fail_message}</span>}
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                  <span style={{ fontSize: '0.67rem', color: item.status==='Completed'?'#27c93f':'#ff5f56' }}>{item.status}</span>
+                  <span style={{ fontSize: '0.67rem', color: item.status==='Completed'?'var(--color-success)':'var(--color-error)' }}>{item.status}</span>
                   {item.status === 'Failed' && <FBtn label="[RETRY]" cls="warn" onClick={() => retryFailed(item.nzo_id)} />}
                 </div>
               </div>
@@ -978,8 +981,8 @@ function SABnzbdPanelFull({ onOpenWebUI }) {
           <div style={{ marginBottom: 16 }}>
             <div style={{ color: 'var(--neon-cyan)', fontSize: '0.75rem', letterSpacing: 2, marginBottom: 10, borderBottom: '1px solid rgba(0,243,255,0.2)', paddingBottom: 4 }}>HISTORY STATS</div>
             {[
-              { label: 'TOTAL COMPLETED', val: history.filter(h=>h.status==='Completed').length, color: '#27c93f' },
-              { label: 'FAILED',          val: history.filter(h=>h.status==='Failed').length,    color: '#ff5f56' },
+              { label: 'TOTAL COMPLETED', val: history.filter(h=>h.status==='Completed').length, color: 'var(--color-success)' },
+              { label: 'FAILED',          val: history.filter(h=>h.status==='Failed').length,    color: 'var(--color-error)' },
               { label: 'QUEUE SLOTS',     val: queueData?.slots?.length || 0,                    color: 'var(--neon-cyan)' },
             ].map(s => (
               <div key={s.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 10px', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,255,0,0.08)', borderRadius: 3, marginBottom: 6 }}>

@@ -241,7 +241,7 @@ async function* streamChat(config, messages, opts) {
 
   for (let iter = 0; iter < maxIterations; iter++) {
     const body = {
-      model:    (config.ai && config.ai.chatModel) || 'gpt-4o-mini',
+      model:    (config.ai && config.ai.chatModel) || 'gpt-4o',
       messages: history,
       stream:   true,
     };
@@ -317,7 +317,7 @@ async function* streamChat(config, messages, opts) {
 
 async function* streamLogAnalysis(config, lines) {
   yield* streamCompletions(config, {
-    model:    (config.ai && config.ai.logModel) || 'gpt-4o-mini',
+    model:    (config.ai && config.ai.logModel) || 'gpt-4o',
     messages: [
       { role: 'system', content: SYSTEM_LOGS },
       { role: 'user',   content: lines.join('\n').slice(0, 50_000) },
@@ -328,7 +328,7 @@ async function* streamLogAnalysis(config, lines) {
 
 async function suggestShell(config, intent) {
   const body = {
-    model:    (config.ai && config.ai.shellModel) || 'gpt-4o-mini',
+    model:    (config.ai && config.ai.shellModel) || 'gpt-4o',
     messages: [
       { role: 'system', content: SYSTEM_SHELL },
       { role: 'user',   content: intent },

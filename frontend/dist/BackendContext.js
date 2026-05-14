@@ -10,11 +10,8 @@
        enabled is truthy and the page is visible. Re-runs on re-show
        so the UI feels fresh when you come back to the tab. */
 const BackendCtx = React.createContext(null);
-
 function usePageVisible() {
-  const [visible, setVisible] = React.useState(
-    typeof document === 'undefined' ? true : !document.hidden
-  );
+  const [visible, setVisible] = React.useState(typeof document === 'undefined' ? true : !document.hidden);
   React.useEffect(() => {
     const onChange = () => setVisible(!document.hidden);
     document.addEventListener('visibilitychange', onChange);
@@ -22,30 +19,35 @@ function usePageVisible() {
   }, []);
   return visible;
 }
-
 function usePoller(fn, ms, enabled = true) {
   const visible = usePageVisible();
   const fnRef = React.useRef(fn);
-  React.useEffect(() => { fnRef.current = fn; }, [fn]);
+  React.useEffect(() => {
+    fnRef.current = fn;
+  }, [fn]);
   React.useEffect(() => {
     if (!enabled || !visible || !ms) return;
     let cancelled = false;
-    const run = () => { if (!cancelled) fnRef.current(); };
+    const run = () => {
+      if (!cancelled) fnRef.current();
+    };
     run();
     const id = setInterval(run, ms);
-    return () => { cancelled = true; clearInterval(id); };
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
   }, [ms, enabled, visible]);
 }
-
-function BackendProvider({ host, apiKey, children }) {
-  const api = React.useMemo(
-    () => window.makeApi(host, apiKey),
-    [host, apiKey]
-  );
-  const [status, setStatus]       = React.useState(apiKey === '__demo__' ? 'demo' : 'connecting');
+function BackendProvider({
+  host,
+  apiKey,
+  children
+}) {
+  const api = React.useMemo(() => window.makeApi(host, apiKey), [host, apiKey]);
+  const [status, setStatus] = React.useState(apiKey === '__demo__' ? 'demo' : 'connecting');
   const [lastError, setLastError] = React.useState(null);
   const [aiEnabled, setAiEnabled] = React.useState(false);
-
   const visible = usePageVisible();
   React.useEffect(() => {
     if (apiKey === '__demo__') {
@@ -58,7 +60,9 @@ function BackendProvider({ host, apiKey, children }) {
     const ctl = new AbortController();
     const tick = async () => {
       try {
-        const h = await api.health({ signal: ctl.signal });
+        const h = await api.health({
+          signal: ctl.signal
+        });
         if (ctl.signal.aborted) return;
         setStatus('online');
         setLastError(null);
@@ -72,34 +76,43 @@ function BackendProvider({ host, apiKey, children }) {
     };
     tick();
     const iv = setInterval(tick, 5000);
-    return () => { ctl.abort(); clearInterval(iv); };
+    return () => {
+      ctl.abort();
+      clearInterval(iv);
+    };
   }, [api, apiKey, visible]);
-
-  const ai = React.useMemo(
-    () => (apiKey === '__demo__' || !aiEnabled ? null : window.makeAiClient(host, apiKey)),
-    [host, apiKey, aiEnabled]
-  );
-
-  const value = React.useMemo(
-    () => ({ host, apiKey, api, ai, status, lastError, isDemo: apiKey === '__demo__', aiEnabled }),
-    [host, apiKey, api, ai, status, lastError, aiEnabled]
-  );
-
-  return <BackendCtx.Provider value={value}>{children}</BackendCtx.Provider>;
+  const ai = React.useMemo(() => apiKey === '__demo__' || !aiEnabled ? null : window.makeAiClient(host, apiKey), [host, apiKey, aiEnabled]);
+  const value = React.useMemo(() => ({
+    host,
+    apiKey,
+    api,
+    ai,
+    status,
+    lastError,
+    isDemo: apiKey === '__demo__',
+    aiEnabled
+  }), [host, apiKey, api, ai, status, lastError, aiEnabled]);
+  return /*#__PURE__*/React.createElement(BackendCtx.Provider, {
+    value: value
+  }, children);
 }
-
 function useBackend() {
   const ctx = React.useContext(BackendCtx);
   if (!ctx) {
     return {
-      host: 'nas.local', apiKey: '__demo__', api: null, ai: null,
-      status: 'demo', lastError: null, isDemo: true, aiEnabled: false,
+      host: 'nas.local',
+      apiKey: '__demo__',
+      api: null,
+      ai: null,
+      status: 'demo',
+      lastError: null,
+      isDemo: true,
+      aiEnabled: false
     };
   }
   return ctx;
 }
-
 window.BackendProvider = BackendProvider;
-window.useBackend      = useBackend;
-window.usePageVisible  = usePageVisible;
-window.usePoller       = usePoller;
+window.useBackend = useBackend;
+window.usePageVisible = usePageVisible;
+window.usePoller = usePoller;
