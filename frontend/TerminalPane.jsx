@@ -21,7 +21,7 @@ function parseAnsi(text) {
     30: '#000000',  // color0  — black
     31: '#9f0000',  // color1  — dark red
     32: '#008b00',  // color2  — dark green
-    33: '#ffcf00',  // color3  — yellow
+    33: 'var(--color-warn)',  // color3  — yellow
     34: '#0081ff',  // color4  — blue
     35: '#bc00ca',  // color5  — magenta
     36: '#008b8b',  // color6  — cyan
@@ -36,7 +36,7 @@ function parseAnsi(text) {
     97: '#ffffff',  // color15 — bright white
   };
   const ANSI_COLORS_BG = {
-    40: '#000000', 41: '#9f0000', 42: '#008b00', 43: '#ffcf00',
+    40: '#000000', 41: '#9f0000', 42: '#008b00', 43: 'var(--color-warn)',
     44: '#0081ff', 45: '#bc00ca', 46: '#008b8b', 47: '#bbbbbb',
     100:'#545454', 101:'#ff0000', 102:'#00ee00', 103:'#ffff00',
     104:'#0000ff', 105:'#ff00ff', 106:'#00cdcd', 107:'#ffffff',
@@ -82,7 +82,7 @@ function parseAnsi(text) {
 
 function xterm256(n) {
   if (n < 16) {
-    const basic = ['#1e1e1e','#ff5f56','#27c93f','#ffbd2e','#4d9ef0','#cc44ff','#00f3ff','#ccffcc',
+    const basic = ['#1e1e1e','var(--color-error)','var(--color-success)','var(--color-warn)','#4d9ef0','#cc44ff','#00f3ff','#ccffcc',
                    '#555555','#ff7b6b','#5af78e','#f3f99d','#57c7ff','#ff69c8','#9aedfe','#f1f1f0'];
     return basic[n] || '#ccffcc';
   }
@@ -102,7 +102,12 @@ function xterm256(n) {
 //   { kind: 'prompt',  user, host, cwd, input }       — a completed command line
 //   { kind: 'blank' }                                 — empty line
 
-function OutputLine({ segments }) {
+// Soft cap on the in-memory buffer for the in-process simulator. The xterm
+// pane has its own scrollback; this cap only applies to TermSession's React
+// buffer to keep DOM nodes bounded when a session runs for a long time.
+const TERM_BUFFER_CAP = 2000;
+
+const OutputLine = React.memo(function OutputLine({ segments }) {
   if (!segments || segments.length === 0) return <div style={{ minHeight: '1.4em' }} />;
   return (
     <div style={{ lineHeight: '1.55', whiteSpace: 'pre-wrap', wordBreak: 'break-all', minHeight: '1.4em' }}>
@@ -111,11 +116,11 @@ function OutputLine({ segments }) {
       ))}
     </div>
   );
-}
+});
 
 // ── Prompt line — matches Gene's ENCOM kitty theme ───────────────────────────
 // background #000000, foreground #00a595 (teal-cyan), cursor #bbbbbb
-function PromptLine({ user, host, cwd, cmd }) {
+const PromptLine = React.memo(function PromptLine({ user, host, cwd, cmd }) {
   return (
     <div style={{ lineHeight: '1.55', whiteSpace: 'pre-wrap', wordBreak: 'break-all', display: 'flex', flexWrap: 'wrap', gap: 0 }}>
       {/* user — ENCOM bright green */}
@@ -133,11 +138,11 @@ function PromptLine({ user, host, cwd, cmd }) {
       <span style={{ color: '#bbbbbb' }}>{cmd}</span>
     </div>
   );
-}
+});
 
 // ── Command simulator — ENCOM color palette ───────────────────────────────────
 // ENCOM: color2=#008b00, color10=#00ee00, color6=#008b8b, color14=#00cdcd
-// color3=#ffcf00, color11=#ffff00, color1=#9f0000, color9=#ff0000
+// color3=var(--color-warn), color11=#ffff00, color1=#9f0000, color9=#ff0000
 function simulateCommand(cmd, session) {
   const parts = cmd.trim().split(/\s+/);
   const base  = parts[0];
@@ -146,7 +151,7 @@ function simulateCommand(cmd, session) {
   const BG  = '\x1b[92m';   // bright green #00ee00 ← primary
   const C   = '\x1b[36m';   // cyan         #008b8b
   const BC  = '\x1b[96m';   // bright cyan  #00cdcd ← secondary
-  const Y   = '\x1b[33m';   // yellow       #ffcf00
+  const Y   = '\x1b[33m';   // yellow       var(--color-warn)
   const BY  = '\x1b[93m';   // bright yellow #ffff00
   const R   = '\x1b[31m';   // dark red     #9f0000
   const BR  = '\x1b[91m';   // bright red   #ff0000
@@ -385,6 +390,9 @@ function simulateCommand(cmd, session) {
 }
 
 // ── Session state management ──────────────────────────────────────────────────
+let __termLineSeq = 0;
+const lineId = () => ++__termLineSeq;
+
 function createSession(id, host) {
   // Colors match ENCOM kitty theme from Gene's dotfiles
   const C  = '\x1b[96m';   // bright cyan  #00cdcd — hostnames, titles
@@ -392,6 +400,8 @@ function createSession(id, host) {
   const Y  = '\x1b[93m';   // bright yellow #ffff00 — warnings
   const D  = '\x1b[2m';    // dim
   const RST = '\x1b[0m';
+  const out = (segments) => ({ id: lineId(), kind: 'output', segments });
+  const blank = () => ({ id: lineId(), kind: 'output', segments: [] });
   return {
     id,
     host: host || 'nas.local',
@@ -401,12 +411,12 @@ function createSession(id, host) {
     history: [],
     historyIdx: -1,
     buffer: [
-      { kind: 'output', segments: parseAnsi(`${D}Linux nas 6.1.0-21-amd64 #1 SMP Debian 6.1.90 x86_64${RST}`) },
-      { kind: 'output', segments: [] },
-      { kind: 'output', segments: parseAnsi(`${D}Last login: Wed May  7 03:14:21 2026 from 192.168.1.42${RST}`) },
-      { kind: 'output', segments: [] },
-      { kind: 'output', segments: parseAnsi(`Welcome to ${C}NAS_TERMINAL${RST} — type ${Y}help${RST} for available commands`) },
-      { kind: 'output', segments: [] },
+      out(parseAnsi(`${D}Linux nas 6.1.0-21-amd64 #1 SMP Debian 6.1.90 x86_64${RST}`)),
+      blank(),
+      out(parseAnsi(`${D}Last login: Wed May  7 03:14:21 2026 from 192.168.1.42${RST}`)),
+      blank(),
+      out(parseAnsi(`Welcome to ${C}NAS_TERMINAL${RST} — type ${Y}help${RST} for available commands`)),
+      blank(),
     ],
   };
 }
@@ -437,7 +447,7 @@ function TermSession({ session, onUpdate }) {
     const newLines = [];
 
     // Add the prompt + command line to buffer
-    newLines.push({ kind: 'prompt', ...prompt, cmd: trimmed });
+    newLines.push({ id: lineId(), kind: 'prompt', ...prompt, cmd: trimmed });
 
     if (trimmed) {
       const result = simulateCommand(trimmed, session);
@@ -450,21 +460,26 @@ function TermSession({ session, onUpdate }) {
       // Add output lines
       result.forEach(line => {
         if (line === '') {
-          newLines.push({ kind: 'output', segments: [] });
+          newLines.push({ id: lineId(), kind: 'output', segments: [] });
         } else {
-          newLines.push({ kind: 'output', segments: parseAnsi(line) });
+          newLines.push({ id: lineId(), kind: 'output', segments: parseAnsi(line) });
         }
       });
 
       // Add trailing blank line
-      newLines.push({ kind: 'output', segments: [] });
+      newLines.push({ id: lineId(), kind: 'output', segments: [] });
     }
 
-    onUpdate(session.id, s => ({
-      ...s,
-      buffer: [...s.buffer, ...newLines],
-      history: trimmed ? [trimmed, ...s.history.slice(0, 49)] : s.history,
-    }));
+    onUpdate(session.id, s => {
+      const merged = [...s.buffer, ...newLines];
+      // Trim oldest lines once we exceed the cap — keeps long sessions cheap.
+      const buffer = merged.length > TERM_BUFFER_CAP ? merged.slice(-TERM_BUFFER_CAP) : merged;
+      return {
+        ...s,
+        buffer,
+        history: trimmed ? [trimmed, ...s.history.slice(0, 49)] : s.history,
+      };
+    });
     setHistIdx(-1);
   };
 
@@ -494,8 +509,9 @@ function TermSession({ session, onUpdate }) {
       onUpdate(session.id, s => ({ ...s, buffer: [] }));
     } else if (e.key === 'c' && e.ctrlKey) {
       e.preventDefault();
-      const cancelLine = { kind: 'prompt', ...prompt, cmd: input + '^C' };
-      onUpdate(session.id, s => ({ ...s, buffer: [...s.buffer, cancelLine, { kind: 'output', segments: [] }] }));
+      const cancelLine = { id: lineId(), kind: 'prompt', ...prompt, cmd: input + '^C' };
+      const blank = { id: lineId(), kind: 'output', segments: [] };
+      onUpdate(session.id, s => ({ ...s, buffer: [...s.buffer, cancelLine, blank] }));
       setInput('');
     } else if (e.key === 'a' && e.ctrlKey) {
       e.preventDefault();
@@ -524,15 +540,17 @@ function TermSession({ session, onUpdate }) {
       }}
       onClick={focusInput}
     >
-      {/* Render buffer */}
+      {/* Render buffer — keyed by stable line id so React.memo can skip
+          re-rendering unchanged lines when new ones are appended. */}
       {session.buffer.map((line, i) => {
+        const key = line.id != null ? line.id : `i-${i}`;
         if (line.kind === 'output') {
-          return <OutputLine key={i} segments={line.segments} />;
+          return <OutputLine key={key} segments={line.segments} />;
         }
         if (line.kind === 'prompt') {
-          return <PromptLine key={i} user={line.user} host={line.host} cwd={line.cwd} cmd={line.cmd} />;
+          return <PromptLine key={key} user={line.user} host={line.host} cwd={line.cwd} cmd={line.cmd} />;
         }
-        return <div key={i} style={{ minHeight: '1.4em' }} />;
+        return <div key={key} style={{ minHeight: '1.4em' }} />;
       })}
 
       {/* Live input line */}
@@ -608,7 +626,7 @@ function WSTerminalSession({ wsUrl }) {
       // CDN didn't load — fail loud rather than silently render nothing.
       if (containerRef.current) {
         containerRef.current.textContent = '> xterm.js failed to load (check network).';
-        containerRef.current.style.color = '#ff5f56';
+        containerRef.current.style.color = 'var(--color-error)';
         containerRef.current.style.padding = '12px';
       }
       return;

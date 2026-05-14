@@ -37,7 +37,9 @@ body {
   background-attachment: fixed;
 }
 
-/* CRT scanline overlay */
+/* CRT scanline overlay. The flicker animation is paused when the document
+   is hidden (browsers stop animation timers on hidden tabs by default,
+   but we also honor prefers-reduced-motion). */
 body::after {
   content: " ";
   display: block;
@@ -49,17 +51,21 @@ body::after {
   background-size: 100% 3px, 3px 100%;
   z-index: 9999;
   pointer-events: none;
-  animation: flicker 0.15s infinite;
+  opacity: 0.93;
+  animation: flicker 1.2s steps(8, end) infinite;
 }
 
 @keyframes flicker {
-  0%   { opacity: 0.92; }
-  5%   { opacity: 0.86; }
-  10%  { opacity: 0.96; }
-  20%  { opacity: 0.99; }
-  50%  { opacity: 0.96; }
-  80%  { opacity: 0.91; }
-  100% { opacity: 0.93; }
+  0%, 100% { opacity: 0.93; }
+  12%      { opacity: 0.88; }
+  28%      { opacity: 0.97; }
+  41%      { opacity: 0.99; }
+  63%      { opacity: 0.94; }
+  82%      { opacity: 0.9; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body::after { animation: none; opacity: 0.92; }
 }
 
 a { color: inherit; text-decoration: none; }
@@ -85,44 +91,23 @@ input, textarea, select { font-family: var(--font-system); }
   gap: 6px;
 }
 
-/* Waybar pill modules */
+/* Waybar pill modules — Hyprland-feel: more breathing room between modules
+   so the status bar reads at a glance rather than as a wall of text. */
 .wb-module {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 3px 10px;
-  border-radius: 8px;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: var(--radius-md);
   font-size: 11px;
   letter-spacing: 0.5px;
   white-space: nowrap;
   flex-shrink: 0;
 }
 
-/* Left modules group */
-.wb-left {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex: 1;
-}
-
-/* Center group — clock */
-.wb-center {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-}
-
-/* Right modules group */
-.wb-right {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-left: auto;
-}
+.wb-left   { display: flex; align-items: center; gap: 8px; flex: 1; }
+.wb-center { display: flex; align-items: center; gap: 8px; position: absolute; left: 50%; transform: translateX(-50%); }
+.wb-right  { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 
 /* Module color variants */
 .wb-module.menu {
@@ -194,18 +179,18 @@ input, textarea, select { font-family: var(--font-system); }
   text-transform: uppercase;
 }
 .wb-module .wb-val { font-weight: bold; }
-.wb-module .wb-val.warn { color: #ffcf00 !important; }
-.wb-module .wb-val.crit { color: #ff5f56 !important; }
+.wb-module .wb-val.warn { color: var(--color-warn) !important; }
+.wb-module .wb-val.crit { color: var(--color-error) !important; }
 
 /* Workspace pills */
 .wb-workspace {
   display: flex;
   align-items: center;
-  gap: 3px;
-  background: rgba(0,0,0,0.4);
+  gap: 6px;
+  background: var(--bg-overlay-1);
   border: 1px solid rgba(0,165,149,0.2);
-  border-radius: 10px;
-  padding: 2px 6px;
+  border-radius: var(--radius-md);
+  padding: 3px 8px;
 }
 .wb-ws-btn {
   width: 20px; height: 20px;
@@ -231,20 +216,16 @@ input, textarea, select { font-family: var(--font-system); }
   background: transparent;  /* always transparent — body bg shows through */
 }
 
-/* Floaty ambient container — wraps all windows */
+/* Workspace container. The earlier 6s ambient "float" animation pushed
+   1–2px translates on every frame and prevented the GPU from
+   consolidating the transform layer during window drag/resize. Removing
+   it makes drags feel snappier with no visible loss. */
 #workspace-inner {
   width: 100%; height: 100%;
   position: relative;
   background: transparent;
-  animation: workspace-float 6s ease-in-out infinite;
-}
-
-@keyframes workspace-float {
-  0%   { transform: translate(0px,  0px); }
-  25%  { transform: translate(1px, -2px); }
-  50%  { transform: translate(0px, -1px); }
-  75%  { transform: translate(-1px,-2px); }
-  100% { transform: translate(0px,  0px); }
+  padding: var(--gap-outer, 12px);
+  box-sizing: border-box;
 }
 
 /* Inactive windows dim — matches Gene's dim_inactive = true, dim_strength = 0.1 */
@@ -302,9 +283,14 @@ input, textarea, select { font-family: var(--font-system); }
   position: absolute;
   inset: -2px;
   border-radius: 13px;
-  z-index: 0;
+  z-index: -1;
   pointer-events: none;
-  opacity: 0.6;
+  background: conic-gradient(from var(--gradient-angle), #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  padding: 2px;
+  opacity: 0.65;
 }
 
 .rofi-inner {
@@ -398,6 +384,10 @@ input, textarea, select { font-family: var(--font-system); }
   color: #00a595;
   box-shadow: 0 0 12px rgba(0,165,149,0.1);
 }
+.rofi-app:focus-visible {
+  outline: 2px solid var(--neon-green);
+  outline-offset: -2px;
+}
 .rofi-app-icon {
   font-size: 1.2rem;
   color: #00cdcd;
@@ -460,15 +450,24 @@ input, textarea, select { font-family: var(--font-system); }
 .rofi-win-title { flex: 1; font-weight: bold; }
 .rofi-win-type { font-size: 0.65rem; color: rgba(0,165,149,0.4); }
 
-/* ---------- @property for gradient animation ---------- */
+/* ---------- @property for gradient animation ----------
+   Rainbow border angle. Drives every .wm-ring and .rofi-ring via
+   `conic-gradient(from var(--gradient-angle), …)`. The animation runs on
+   :root so a single CSS-only loop replaces what used to be a JS rAF loop
+   that touched every ring element 60 times a second. */
 @property --gradient-angle {
   syntax: "<angle>";
   initial-value: 0deg;
-  inherits: false;
+  inherits: true;
 }
 @keyframes rot {
-  0%   { --gradient-angle: 0deg; }
-  100% { --gradient-angle: 360deg; }
+  to { --gradient-angle: 360deg; }
+}
+:root {
+  animation: rot var(--dur-rotation, 6s) linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root { animation: none; }
 }
 
 /* ---------- Window chrome ---------- */
@@ -501,15 +500,15 @@ input, textarea, select { font-family: var(--font-system); }
   position: absolute;
   inset: -3px;
   border-radius: 15px;
-  z-index: 0;
+  z-index: -1;
   pointer-events: none;
-  background: conic-gradient(from 0deg, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000);
+  background: conic-gradient(from var(--gradient-angle), #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000);
   /* Mask to border-only so the gradient doesn't bleed through the glass panel */
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
   padding: 3px;
-  opacity: 0.25;
+  opacity: 0.45;
   transition: opacity 0.3s;
 }
 .wm-window.active .wm-ring {
@@ -530,12 +529,12 @@ input, textarea, select { font-family: var(--font-system); }
 .wm-inner {
   position: absolute;
   inset: 0;
-  border-radius: 9px;
+  border-radius: var(--radius-lg);
   overflow: hidden;
   display: flex;
   flex-direction: column;
   background: var(--bg-glass);
-  backdrop-filter: blur(14px);
+  backdrop-filter: blur(12px);
   z-index: 1;
   /* Subtle inner vignette for CRT depth */
   box-shadow: inset 0 0 60px rgba(0, 0, 0, 0.6), inset 0 0 2px rgba(0,255,0,0.08);
@@ -553,8 +552,22 @@ input, textarea, select { font-family: var(--font-system); }
   cursor: grab;
   height: 34px;
   min-height: 34px;
+  position: relative;
 }
 .wm-titlebar:active { cursor: grabbing; }
+
+/* Active-window accent — a thin neon-green bar on the leading edge of the
+   titlebar so the focused window reads at a glance (rainbow ring alone is
+   too subtle in busy layouts). */
+.wm-window.active .wm-titlebar::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 4px; bottom: 4px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--neon-green);
+  box-shadow: 0 0 6px var(--neon-green);
+}
 
 .win-dots { display: flex; gap: 7px; align-items: center; flex-shrink: 0; }
 .win-dot {
@@ -568,9 +581,10 @@ input, textarea, select { font-family: var(--font-system); }
   position: relative;
 }
 .win-dot:hover { transform: scale(1.2); filter: brightness(1.3); }
-.win-dot.close  { background: #ff5f56; box-shadow: 0 0 6px rgba(255,95,86,0.7); }
-.win-dot.min    { background: #ffbd2e; box-shadow: 0 0 6px rgba(255,189,46,0.7); }
-.win-dot.max    { background: #27c93f; box-shadow: 0 0 6px rgba(39,201,63,0.7); }
+.win-dot.close  { background: var(--color-error); box-shadow: 0 0 6px rgba(255,95,86,0.7); }
+.win-dot.min    { background: var(--color-warn); box-shadow: 0 0 6px rgba(255,189,46,0.7); }
+.win-dot.max    { background: var(--color-success); box-shadow: 0 0 6px rgba(39,201,63,0.7); }
+.win-dot:focus-visible { outline: 2px solid var(--neon-cyan); outline-offset: 2px; }
 
 .win-title {
   font-size: 0.75rem;
@@ -704,7 +718,7 @@ input, textarea, select { font-family: var(--font-system); }
 .webapp-pane {
   flex: 1;
   position: relative;
-  background: #000;
+  background: var(--bg-dark);
 }
 .webapp-pane iframe {
   width: 100%;
@@ -1063,10 +1077,10 @@ input, textarea, select { font-family: var(--font-system); }
 
 .login-panel {
   background: rgba(6, 12, 8, 0.92);
-  border: 1px solid rgba(0,255,0,0.2);
-  border-radius: 10px;
+  border-radius: var(--radius-xl);
+  /* Rainbow ring on ::before serves as the visible edge — no separate 1px
+     border underneath, which used to fight the ring for attention. */
   box-shadow:
-    0 0 0 1px rgba(0,255,0,0.06),
     0 8px 64px rgba(0,0,0,0.9),
     0 0 60px rgba(0,255,0,0.08),
     0 0 120px rgba(128,0,255,0.06),
@@ -1085,8 +1099,8 @@ input, textarea, select { font-family: var(--font-system); }
   position: absolute;
   inset: -2px;
   z-index: -1;
-  border-radius: 11px;
-  background: conic-gradient(from var(--gradient-angle, 0deg), #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000);
+  border-radius: calc(var(--radius-xl) + 1px);
+  background: conic-gradient(from var(--gradient-angle), #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000);
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;

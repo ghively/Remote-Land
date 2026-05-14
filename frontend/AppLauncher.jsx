@@ -55,7 +55,6 @@ function AppLauncher({ isOpen, onClose, onLaunch, windows = [] }) {
   const [aiLoading, setAiLoading]   = useState(false);
   const [aiError, setAiError]       = useState(null);
   const searchRef = useRef(null);
-  const ringRef = useRef(null);
 
   useEffect(() => { saveWebapps(webapps); }, [webapps]);
 
@@ -75,13 +74,17 @@ function AppLauncher({ isOpen, onClose, onLaunch, windows = [] }) {
   }, [search, mode]);
 
   const askAI = async (intent) => {
-    if (!ai || !intent) return;
+    if (!intent) return;
+    if (!ai || typeof ai.shell !== 'function') {
+      setAiError('AI service unavailable. Check backend config.');
+      return;
+    }
     setAiLoading(true); setAiResult(null); setAiError(null);
     try {
       const out = await ai.shell(intent);
       setAiResult(out);
     } catch (err) {
-      setAiError(err.message);
+      setAiError(err && err.message ? err.message : 'AI request failed');
     } finally {
       setAiLoading(false);
     }
@@ -92,20 +95,8 @@ function AppLauncher({ isOpen, onClose, onLaunch, windows = [] }) {
     onClose();
   };
 
-  // Update ring background from global gradient angle
-  useEffect(() => {
-    if (!isOpen) return;
-    let raf;
-    const updateRing = () => {
-      if (ringRef.current) {
-        const angle = getComputedStyle(document.documentElement).getPropertyValue('--gradient-angle') || '0deg';
-        ringRef.current.style.background = `conic-gradient(from ${angle}, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)`;
-      }
-      raf = requestAnimationFrame(updateRing);
-    };
-    raf = requestAnimationFrame(updateRing);
-    return () => cancelAnimationFrame(raf);
-  }, [isOpen]);
+  // (Rainbow ring is now driven by pure CSS via the global --gradient-angle
+  // animation in wm-styles.css — no per-frame JS work needed.)
 
   // Escape closes
   useEffect(() => {
@@ -160,8 +151,8 @@ function AppLauncher({ isOpen, onClose, onLaunch, windows = [] }) {
   return (
     <div id="app-launcher" className={isOpen ? 'open' : ''} onClick={e => { if (e.target.id === 'app-launcher') onClose(); }}>
       <div className="rofi-panel">
-        {/* Rainbow ring */}
-        <div className="rofi-ring" ref={ringRef} style={{ opacity: 0.5 }} />
+        {/* Rainbow ring — animated by CSS via --gradient-angle */}
+        <div className="rofi-ring" />
 
         <div className="rofi-inner">
           {/* Header with search */}
@@ -308,7 +299,7 @@ function AppLauncher({ isOpen, onClose, onLaunch, windows = [] }) {
                   <div style={{ color: 'var(--text-dim)' }}>&gt; thinking...</div>
                 )}
                 {aiError && (
-                  <div style={{ color: '#ff5f56' }}>&gt; error: {aiError}</div>
+                  <div style={{ color: 'var(--color-error)' }}>&gt; error: {aiError}</div>
                 )}
                 {aiResult && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -317,8 +308,8 @@ function AppLauncher({ isOpen, onClose, onLaunch, windows = [] }) {
                                   whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
                       <code style={{ color: 'var(--neon-green)' }}>{aiResult.command || '(no command)'}</code>
                     </div>
-                    <div style={{ color: aiResult.danger === 'destructive' ? '#ff5f56'
-                                    : aiResult.danger === 'caution' ? '#ffbd2e'
+                    <div style={{ color: aiResult.danger === 'destructive' ? 'var(--color-error)'
+                                    : aiResult.danger === 'caution' ? 'var(--color-warn)'
                                     : 'var(--neon-green)',
                                   fontSize: '0.75rem', letterSpacing: 2 }}>
                       [{aiResult.danger.toUpperCase()}]
@@ -339,7 +330,7 @@ function AppLauncher({ isOpen, onClose, onLaunch, windows = [] }) {
                         </button>
                       )}
                       {aiResult.danger === 'destructive' && (
-                        <span style={{ color: '#ff5f56', fontSize: '0.7rem' }}>
+                        <span style={{ color: 'var(--color-error)', fontSize: '0.7rem' }}>
                           destructive — copy only
                         </span>
                       )}
@@ -360,7 +351,7 @@ function AppLauncher({ isOpen, onClose, onLaunch, windows = [] }) {
                       <button key={app.id} className={`rofi-app${focused === i ? ' focused' : ''}`}
                         onClick={() => launch(app)}
                         onMouseEnter={() => setFocused(i)}>
-                        <span className="rofi-app-icon" style={{ color: '#ffcf00', textShadow: '0 0 8px rgba(255,207,0,0.5)' }}>{app.icon}</span>
+                        <span className="rofi-app-icon" style={{ color: 'var(--color-warn)', textShadow: '0 0 8px rgba(255,207,0,0.5)' }}>{app.icon}</span>
                         <span className="rofi-app-name">{app.name}</span>
                         <span className="rofi-app-desc">{app.desc}</span>
                       </button>

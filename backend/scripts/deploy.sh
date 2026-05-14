@@ -50,6 +50,14 @@ echo "Installing production dependencies"
 cd "$BACKEND_DIR"
 npm install --production --no-audit --no-fund
 
+# --- Precompile JSX for the frontend ---
+# The browser no longer parses Babel at runtime — JSX is built into
+# frontend/dist/*.js once on deploy. No npm install required for this step.
+echo "Precompiling frontend JSX"
+node "$PROJECT_DIR/frontend/build.js" || {
+    echo "WARNING: frontend precompile failed — UI may show a blank page" >&2
+}
+
 # --- Restart service ---
 echo "Restarting $SERVICE_NAME"
 sudo systemctl restart "$SERVICE_NAME"

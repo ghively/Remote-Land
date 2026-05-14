@@ -10,8 +10,8 @@
   "ai": {
     "baseUrl":    "https://api.openai.com/v1",
     "apiKey":     "",
-    "chatModel":  "gpt-4o-mini",
-    "shellModel": "gpt-4o-mini",
-    "logModel":   "gpt-4o-mini"
+    "chatModel":  "gpt-4o",
+    "shellModel": "gpt-4o",
+    "logModel":   "gpt-4o"
   }
 }

@@ -90,6 +90,21 @@
   /* CRT-bowed window: 2% horizontal / 5% vertical */
   --radius-crt: 2% 2% 2% 2% / 5% 5% 5% 5%;
 
+  /* ---------- Window gaps (Hyprland: gaps_in / gaps_out) ---------- */
+  --gap-inner: 8px;
+  --gap-outer: 12px;
+
+  /* ---------- Status colors (used for warnings, errors, success) ---------- */
+  --color-success: #27c93f;
+  --color-warn:    #ffbd2e;
+  --color-error:   #ff5f56;
+  --color-info:    var(--neon-cyan);
+
+  /* Soft backdrops used in panel chrome — derived once so themes can override */
+  --bg-overlay-1: rgba(0,0,0,0.5);
+  --bg-overlay-2: rgba(0,0,0,0.7);
+  --bg-overlay-3: rgba(0,0,0,0.9);
+
   /* ---------- Spacing scale (derived from observed values) ---------- */
   --space-1:  4px;
   --space-2:  8px;
