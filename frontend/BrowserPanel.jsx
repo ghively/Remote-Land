@@ -12,17 +12,33 @@ const DEFAULT_BOOKMARKS = [
   { name: 'Selfhosted',   url: 'https://reddit.com/r/selfhosted', icon: '[SH]' },
 ];
 
-const BM_KEY   = 'nas_browser_bookmarks';
-const HIST_KEY = 'nas_browser_history';
+const BM_KEY      = 'nas_browser_bookmarks';
+const HIST_KEY    = 'nas_browser_history';
+const TRUSTED_KEY = 'nas_browser_trusted_origins';
 
 function loadBM()   { try { return JSON.parse(localStorage.getItem(BM_KEY))   || DEFAULT_BOOKMARKS; } catch { return DEFAULT_BOOKMARKS; } }
 function loadHist() { try { return JSON.parse(localStorage.getItem(HIST_KEY)) || []; } catch { return []; } }
+function loadTrusted() { try { return new Set(JSON.parse(localStorage.getItem(TRUSTED_KEY)) || []); } catch { return new Set(); } }
+function saveTrusted(set) { try { localStorage.setItem(TRUSTED_KEY, JSON.stringify([...set])); } catch {} }
+
+function originOf(u) {
+  try { return new URL(u).origin; } catch { return ''; }
+}
+
+// Same-origin-with-parent means the iframe can read window.parent's
+// sessionStorage / localStorage if `allow-same-origin` is set. That's where
+// the API-key-leak risk lives, so we warn loudly before trusting it.
+function isParentOrigin(u) {
+  if (typeof window === 'undefined' || !window.location) return false;
+  return originOf(u) === window.location.origin;
+}
 
 function BrowserPanel() {
   const [url, setUrl]         = useState('');
   const [inputUrl, setInputUrl] = useState('');
   const [bookmarks, setBM]    = useState(loadBM);
   const [history, setHistory] = useState(loadHist);
+  const [trusted, setTrusted] = useState(loadTrusted);
   const [view, setView]       = useState('newtab'); // 'newtab' | 'loading' | 'loaded' | 'error'
   const [error, setError]     = useState('');
   const [showBM, setShowBM]   = useState(false);
@@ -32,6 +48,32 @@ function BrowserPanel() {
 
   useEffect(() => { localStorage.setItem(BM_KEY,   JSON.stringify(bookmarks)); }, [bookmarks]);
   useEffect(() => { localStorage.setItem(HIST_KEY, JSON.stringify(history.slice(0, 100))); }, [history]);
+
+  const currentOrigin = originOf(url);
+  const isTrusted = !!currentOrigin && trusted.has(currentOrigin);
+
+  const toggleTrust = () => {
+    if (!currentOrigin) return;
+    if (!isTrusted && isParentOrigin(url)) {
+      const ok = confirm(
+        `WARNING: ${currentOrigin} is the same origin as this app.\n\n` +
+        `Granting "allow-same-origin" here lets the embedded page read this app's ` +
+        `sessionStorage/localStorage — including your saved API key. ` +
+        `Only trust this if you own the page.\n\nContinue?`
+      );
+      if (!ok) return;
+    }
+    setTrusted(prev => {
+      const next = new Set(prev);
+      if (next.has(currentOrigin)) next.delete(currentOrigin);
+      else next.add(currentOrigin);
+      saveTrusted(next);
+      return next;
+    });
+    // Force a reload of the iframe so the new sandbox attribute is applied.
+    setView('loading');
+    setTimeout(() => setView('loaded'), 50);
+  };
 
   const normalizeUrl = (raw) => {
     const s = raw.trim();
@@ -111,6 +153,25 @@ function BrowserPanel() {
         <span style={{ fontSize: '0.72rem', color: url.startsWith('https') ? 'var(--color-success)' : 'var(--color-warn)', flexShrink: 0 }}>
           {url.startsWith('https') ? '[SSL]' : url ? '[HTTP]' : '[--]'}
         </span>
+
+        {/* Sandbox trust toggle. By default we deny allow-same-origin so the
+            embedded page cannot read this app's localStorage (where the API
+            key lives). Per-origin trust restores it for sites that need
+            cookies/local-storage on their own domain to function. */}
+        {currentOrigin && (
+          <button
+            className="cmd-btn-sm"
+            onClick={toggleTrust}
+            title={
+              isTrusted
+                ? `Trusted: ${currentOrigin}\nClick to revoke same-origin sandbox.`
+                : `Sandboxed: ${currentOrigin}\nClick to grant same-origin (cookies/localStorage).`
+            }
+            style={{ color: isTrusted ? 'var(--color-warn)' : 'var(--color-success)', flexShrink: 0 }}
+          >
+            {isTrusted ? '[TRUSTED]' : '[SANDBOX]'}
+          </button>
+        )}
 
         {/* URL bar */}
         <input
@@ -287,7 +348,15 @@ function BrowserPanel() {
             }}
             onLoad={onIframeLoad}
             onError={onIframeError}
-            sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads"
+            // Drop allow-same-origin by default so an embedded page can't read
+            // this app's sessionStorage / localStorage (where the API key
+            // lives). Only restored for origins the user has explicitly
+            // trusted via the toolbar [SANDBOX]/[TRUSTED] toggle.
+            sandbox={
+              `${isTrusted ? 'allow-same-origin ' : ''}` +
+              'allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads'
+            }
+            referrerPolicy="no-referrer"
             title="browser"
           />
         )}

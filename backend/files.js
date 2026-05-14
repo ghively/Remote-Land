@@ -13,13 +13,14 @@ function safePath(p) {
     err.code = 'EBADPATH';
     throw err;
   }
-  const norm = path.posix.normalize(p);
-  if (norm === '/..' || norm.startsWith('/../') || norm.includes('/../')) {
+  // Reject any '..' segment in the raw input — checking after normalize()
+  // would miss it since normalize collapses '..' against earlier segments.
+  if (p.split('/').some(seg => seg === '..')) {
     const err = new Error('path traversal rejected');
     err.code = 'EBADPATH';
     throw err;
   }
-  return norm;
+  return path.posix.normalize(p);
 }
 
 function permString(mode, isDir) {
