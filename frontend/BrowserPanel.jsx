@@ -344,7 +344,7 @@ function BrowserPanel() {
               border: 'none', display: 'block',
               opacity: view === 'loaded' ? 1 : 0,
               transition: 'opacity 0.3s',
-              background: '#fff',
+              background: 'var(--bg-dark)',
             }}
             onLoad={onIframeLoad}
             onError={onIframeError}

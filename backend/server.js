@@ -10,21 +10,48 @@ const files = require('./files');
 const services = require('./services');
 const network = require('./network');
 const cron = require('./cron');
+const configstore = require('./configstore');
 const { attachTerminal } = require('./terminal');
 
 function createApp(config) {
   const app = express();
 
+  // ── CORS ──────────────────────────────────────────────────────────────
+  // Default to the home-lab loopback set; operators can override with
+  // config.allowedOrigins (array of exact-match origins) when running
+  // behind a reverse proxy or LAN hostname.
+  const allowedOrigins = new Set(
+    (config.allowedOrigins && config.allowedOrigins.length)
+      ? config.allowedOrigins
+      : ['http://localhost:3001', 'http://127.0.0.1:3001']
+  );
   app.use(cors({
     origin: (origin, cb) => {
-      if (!origin || origin === 'null' || origin.startsWith('http://localhost')) {
-        cb(null, true);
-      } else {
-        cb(new Error('Not allowed by CORS'));
-      }
+      // No Origin header = same-origin or curl / native fetch — allow.
+      if (!origin || origin === 'null') return cb(null, true);
+      if (allowedOrigins.has(origin)) return cb(null, true);
+      cb(new Error('Not allowed by CORS'));
     },
   }));
   app.use(express.json());
+
+  // ── Request logger ───────────────────────────────────────────────────
+  // Lightweight access log to stdout — one line per request, never echoes
+  // the API key. Skipped for static asset hits to keep the log readable,
+  // and silent under NODE_ENV=test so the test runner stays clean.
+  const loggingEnabled = process.env.NODE_ENV !== 'test';
+  if (loggingEnabled) {
+    app.use((req, res, next) => {
+      if (!req.path.startsWith('/api/') && req.path !== '/') return next();
+      const start = Date.now();
+      res.on('finish', () => {
+        const ms = Date.now() - start;
+        const who = (req.ip || '').replace(/^::ffff:/, '');
+        console.log(`[${new Date().toISOString()}] ${who} ${req.method} ${req.path} ${res.statusCode} ${ms}ms`);
+      });
+      next();
+    });
+  }
 
   // ── Frontend static files ──────────────────────────────────────────────
   // Serve the cyber-noir UI so the entire app is accessible at http://host:port
@@ -113,6 +140,18 @@ function createApp(config) {
     try { files.streamFile(req.query.path, res); }
     catch (err) { res.status(400).json({ error: err.message }); }
   });
+  app.put('/api/files/write', auth, async (req, res) => {
+    try { res.json(await files.writeText(req.body && req.body.path, req.body && req.body.content)); }
+    catch (err) { res.status(400).json({ error: err.message }); }
+  });
+  // Streaming upload — body is the raw file bytes; query params carry
+  // metadata. Express's json/urlencoded parsers don't run here.
+  app.post('/api/files/upload', auth, async (req, res, next) => {
+    try {
+      const out = await files.streamUpload(req.query.dir, req.query.name, req);
+      res.json(out);
+    } catch (err) { res.status(400).json({ error: err.message }); }
+  });
   app.post('/api/files/mkdir', auth, async (req, res) => {
     try { res.json(await files.mkdir(req.body && req.body.path)); }
     catch (err) { res.status(400).json({ error: err.message }); }
@@ -148,6 +187,26 @@ function createApp(config) {
   app.get('/api/network', auth, async (req, res) => {
     try { res.json(await network.snapshot()); }
     catch (err) { res.status(503).json({ error: err.message }); }
+  });
+
+  // ── AI provider config ─────────────────────────────────────────────────────
+  // Read returns the AI block with sensitive fields redacted to "__set__"
+  // so the UI can show "key set" / "key empty" without exfiltrating the
+  // real value. Write accepts a whitelisted patch and atomically rewrites
+  // backend/config.json; the running process picks the new values up on
+  // the next request because every AI call dereferences config.ai live.
+  app.get('/api/config/ai', auth, (req, res) => {
+    try { res.json(configstore.redactConfig(config).ai || {}); }
+    catch (err) { res.status(500).json({ error: err.message }); }
+  });
+  app.put('/api/config/ai', auth, (req, res) => {
+    try {
+      const next = configstore.patchAiConfig(req.body || {});
+      // Mutate the in-memory config so requests already mid-flight see the
+      // new values without a process restart.
+      Object.assign(config.ai = config.ai || {}, next.ai);
+      res.json(configstore.redactConfig(next).ai);
+    } catch (err) { res.status(400).json({ error: err.message }); }
   });
 
   // ── Cron ───────────────────────────────────────────────────────────────────

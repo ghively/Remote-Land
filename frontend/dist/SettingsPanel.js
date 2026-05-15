@@ -434,7 +434,13 @@ function SettingsPanel({
     max: max,
     step: step,
     value: s[keyName],
-    onChange: e => set(keyName, parseFloat(e.target.value)),
+    onChange: e => {
+      // Round to step precision to avoid floating-point drift
+      // (e.g. step=0.5 producing 6.300000000001).
+      const raw = parseFloat(e.target.value);
+      const rounded = Math.round(raw / step) * step;
+      set(keyName, +rounded.toFixed(6));
+    },
     style: {
       width: '100%',
       accentColor: 'var(--neon-green)',

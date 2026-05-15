@@ -712,6 +712,7 @@ function SimulatedTerminalPane({ winId, sessions, activeSess, onTabChange, onAdd
             <button
               key={sess.id}
               onClick={() => onTabChange(winId, sess.id)}
+              title={`${sess.user || 'root'}@${sess.host}${sess.port ? ':' + sess.port : ''}`}
               style={{
                 background: isActive ? '#000000' : 'rgba(0,0,0,0.6)',
                 border: 'none',

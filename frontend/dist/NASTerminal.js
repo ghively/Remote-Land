@@ -494,6 +494,12 @@ function MobileDeck({
     name: 'Settings',
     icon: '[ST]',
     desc: 'Theme'
+  }, {
+    id: 'devdocs',
+    name: 'Dev Guide',
+    icon: '[?]',
+    desc: 'Docs',
+    url: 'Developer Guide.html'
   }];
   const openApp = app => {
     setActiveApp(app);

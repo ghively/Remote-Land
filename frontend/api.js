@@ -111,6 +111,18 @@
       mkdir:      (p) => post('/api/files/mkdir', { path: p }),
       renameFile: (from, to) => post('/api/files/rename', { from, to }),
       deleteFile: (p) => del(`/api/files?path=${encodeURIComponent(p)}`),
+      writeFile:  (p, content) => put('/api/files/write', { path: p, content }),
+      uploadFile: async (dir, file) => {
+        // Stream a single File/Blob to /api/files/upload. No timeout
+        // wrapper — large uploads should not get killed at 5s.
+        const url = `${base}/api/files/upload?dir=${encodeURIComponent(dir)}&name=${encodeURIComponent(file.name)}`;
+        const res = await fetch(url, { method: 'POST', headers: auth, body: file });
+        if (!res.ok) {
+          const txt = await res.text().catch(() => '');
+          throw new Error(`upload: HTTP ${res.status} ${txt}`.trim());
+        }
+        return res.json();
+      },
       downloadUrl: (p) => `${base}/api/files/download?path=${encodeURIComponent(p)}&_k=${encodeURIComponent(apiKey)}`,
 
       // ── Services ──
@@ -125,6 +137,10 @@
       // ── Cron ──
       readCrontab:  () => get('/api/cron'),
       writeCrontab: (body) => put('/api/cron', { body }),
+
+      // ── AI provider config ──
+      readAiConfig:  () => get('/api/config/ai'),
+      writeAiConfig: (patch) => put('/api/config/ai', patch),
 
       terminalUrl:    () => `ws://${host}:${PORT}/terminal?token=${encodeURIComponent(apiKey)}`,
     };

@@ -95,12 +95,86 @@ function ProgressBar({ pct, color = 'green' }) {
 // the browser. This panel only configures how the browser reaches the
 // NAS Terminal backend agent itself.
 // ══════════════════════════════════════════════════════════════════════════════
+// Static metadata used by the AI provider section below. Defaults mirror
+// backend/ai.js's DEFAULT_MODELS so the UI suggests sensible values when
+// switching providers.
+const AI_PROVIDERS = [
+  { id: 'anthropic', label: 'Anthropic (Claude)', baseUrl: 'https://api.anthropic.com',
+    models: { chat: 'claude-sonnet-4-6', shell: 'claude-haiku-4-5-20251001', logs: 'claude-opus-4-7' } },
+  { id: 'openai',    label: 'OpenAI / compatible', baseUrl: 'https://api.openai.com/v1',
+    models: { chat: 'gpt-4o', shell: 'gpt-4o', logs: 'gpt-4o' } },
+];
+
 function BackendConfigPanel({ onSave }) {
-  const ctx = window.useBackend ? window.useBackend() : { host: 'nas.local', apiKey: '__demo__' };
+  const ctx = window.useBackend ? window.useBackend() : { host: 'nas.local', apiKey: '__demo__', api: null, isDemo: true };
   const [host, setHost]     = useState(ctx.host || 'nas.local');
   const [apiKey, setApiKey] = useState(ctx.apiKey === '__demo__' ? '' : (ctx.apiKey || ''));
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
+
+  // AI provider config — loaded from /api/config/ai when reachable. Local
+  // state mirrors the form fields; on Save we PUT a patch back.
+  const [aiCfg, setAiCfg] = useState(null);
+  const [aiSaving, setAiSaving] = useState(false);
+  const [aiMsg, setAiMsg] = useState(null);
+
+  useEffect(() => {
+    if (ctx.isDemo || !ctx.api) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const cur = await ctx.api.readAiConfig();
+        if (cancelled) return;
+        const provider = cur.provider || (cur.baseUrl && /anthropic\.com/i.test(cur.baseUrl) ? 'anthropic' : 'openai');
+        setAiCfg({
+          provider,
+          baseUrl:    cur.baseUrl    || AI_PROVIDERS.find(p => p.id === provider).baseUrl,
+          apiKeySet:  cur.apiKey === '__set__',
+          apiKey:     '',
+          chatModel:  cur.chatModel  || '',
+          shellModel: cur.shellModel || '',
+          logModel:   cur.logModel   || '',
+        });
+      } catch (_) { /* no backend yet — section will show "connect first" */ }
+    })();
+    return () => { cancelled = true; };
+  }, [ctx.isDemo, ctx.api]);
+
+  // When the user switches provider, prefill baseUrl + model triple from
+  // the matching preset so they don't have to type Anthropic-vs-OpenAI URLs.
+  const onProviderChange = (nextId) => {
+    const preset = AI_PROVIDERS.find(p => p.id === nextId);
+    setAiCfg(c => ({
+      ...c,
+      provider:   nextId,
+      baseUrl:    preset.baseUrl,
+      chatModel:  preset.models.chat,
+      shellModel: preset.models.shell,
+      logModel:   preset.models.logs,
+    }));
+  };
+
+  const saveAi = async () => {
+    if (!ctx.api || !aiCfg) return;
+    setAiSaving(true); setAiMsg(null);
+    try {
+      const patch = {
+        provider:   aiCfg.provider,
+        baseUrl:    aiCfg.baseUrl,
+        chatModel:  aiCfg.chatModel,
+        shellModel: aiCfg.shellModel,
+        logModel:   aiCfg.logModel,
+      };
+      // Only send apiKey if the user actually typed something — otherwise
+      // the existing key is preserved.
+      if (aiCfg.apiKey) patch.apiKey = aiCfg.apiKey;
+      await ctx.api.writeAiConfig(patch);
+      setAiMsg({ ok: true, msg: '> AI CONFIG SAVED' });
+      setAiCfg(c => ({ ...c, apiKey: '', apiKeySet: c.apiKeySet || !!aiCfg.apiKey }));
+    } catch (err) {
+      setAiMsg({ ok: false, msg: `> SAVE FAILED: ${err.message}` });
+    } finally { setAiSaving(false); }
+  };
 
   const test = async () => {
     setTesting(true); setTestResult(null);
@@ -167,6 +241,83 @@ function BackendConfigPanel({ onSave }) {
         <button className="cmd-btn" style={{ flex: 1, textAlign: 'center', letterSpacing: 2 }} onClick={save}>
           [ SAVE_AND_RECONNECT ]
         </button>
+      </div>
+
+      {/* ── AI provider ─────────────────────────────────────────────── */}
+      <div style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,255,0,0.15)', borderRadius: 4, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ color: 'var(--neon-green)', fontSize: '0.8rem', letterSpacing: 2, fontWeight: 'bold', textShadow: 'var(--glow-green-sm)' }}>
+          [AI_PROVIDER]
+        </div>
+        <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', lineHeight: 1.6 }}>
+          &gt; Backend uses this to call the AI for chat / shell suggestion / log analysis.<br/>
+          &gt; Stored in backend/config.json on the server — the key never lives in the browser.
+        </div>
+
+        {ctx.isDemo && (
+          <div style={{ fontSize: '0.72rem', color: 'var(--color-warn)' }}>
+            &gt; Demo mode — save Backend Agent first, then AI provider becomes editable.
+          </div>
+        )}
+
+        {!ctx.isDemo && !aiCfg && (
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>
+            &gt; Loading current AI config from backend...
+          </div>
+        )}
+
+        {!ctx.isDemo && aiCfg && (
+          <>
+            <div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', letterSpacing: 1, marginBottom: 4 }}>PROVIDER</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {AI_PROVIDERS.map(p => (
+                  <button key={p.id}
+                    className={`cmd-btn-sm${aiCfg.provider === p.id ? ' cyan' : ''}`}
+                    onClick={() => onProviderChange(p.id)}
+                    style={{ flex: 1, textAlign: 'center' }}
+                  >{p.label}</button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', letterSpacing: 1, marginBottom: 4 }}>BASE_URL</div>
+              <input className="logview-filter" style={{ width: '100%' }}
+                value={aiCfg.baseUrl} onChange={e => setAiCfg(c => ({ ...c, baseUrl: e.target.value }))} />
+            </div>
+            <div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', letterSpacing: 1, marginBottom: 4 }}>
+                API_KEY {aiCfg.apiKeySet && !aiCfg.apiKey && <span style={{ color: 'var(--color-success)' }}>[currently set — leave blank to keep]</span>}
+              </div>
+              <input className="logview-filter" style={{ width: '100%' }} type="password"
+                value={aiCfg.apiKey}
+                onChange={e => setAiCfg(c => ({ ...c, apiKey: e.target.value }))}
+                placeholder={aiCfg.apiKeySet ? '••••• (unchanged)' : 'paste API key here'} />
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {[
+                { k: 'chatModel',  label: 'CHAT_MODEL' },
+                { k: 'shellModel', label: 'SHELL_MODEL' },
+                { k: 'logModel',   label: 'LOG_MODEL' },
+              ].map(f => (
+                <div key={f.k} style={{ flex: 1 }}>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', letterSpacing: 1, marginBottom: 4 }}>{f.label}</div>
+                  <input className="logview-filter" style={{ width: '100%' }}
+                    value={aiCfg[f.k]} onChange={e => setAiCfg(c => ({ ...c, [f.k]: e.target.value }))} />
+                </div>
+              ))}
+            </div>
+
+            {aiMsg && (
+              <div style={{ fontSize: '0.72rem', color: aiMsg.ok ? 'var(--neon-green)' : 'var(--color-error)' }}>
+                {aiMsg.msg}
+              </div>
+            )}
+
+            <button className="cmd-btn" style={{ textAlign: 'center', letterSpacing: 2 }} onClick={saveAi} disabled={aiSaving}>
+              {aiSaving ? '[ SAVING... ]' : '[ SAVE_AI_CONFIG ]'}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
