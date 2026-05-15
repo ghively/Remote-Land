@@ -136,6 +136,47 @@ function FileManager({ onNotify }) {
     window.open(api.downloadUrl(target), '_blank');
   };
 
+  // ── Upload via hidden file input ────────────────────────────────────
+  const uploadRef = useRef(null);
+  const onUploadClick = () => {
+    if (isDemo) { notify('> [DEMO] upload unavailable', 'warn'); return; }
+    uploadRef.current && uploadRef.current.click();
+  };
+  const onUploadPick = async (ev) => {
+    const file = ev.target.files && ev.target.files[0];
+    ev.target.value = '';
+    if (!file) return;
+    try {
+      const out = await api.uploadFile(path, file);
+      notify(`> UPLOADED ${out.path} (${(out.size / 1024).toFixed(1)}K)`, 'ok');
+      refresh();
+    } catch (err) { notify(`> UPLOAD FAILED: ${err.message}`, 'crit'); }
+  };
+
+  // ── Inline text editor for selected file ────────────────────────────
+  const [editor, setEditor] = useState(null); // { path, content, original }
+  const onEdit = async () => {
+    if (selected == null || !entries[selected]) return;
+    const e = entries[selected];
+    if (e.type !== 'file') return;
+    const target = path === '/' ? `/${e.name}` : `${path}/${e.name}`;
+    if (isDemo) { setEditor({ path: target, content: '# demo mode\n', original: '# demo mode\n' }); return; }
+    try {
+      const data = await api.readFile(target);
+      setEditor({ path: target, content: data.content, original: data.content });
+    } catch (err) { notify(`> READ FAILED: ${err.message}`, 'crit'); }
+  };
+  const saveEditor = async () => {
+    if (!editor) return;
+    if (isDemo) { notify('> [DEMO] save skipped', 'warn'); setEditor(null); return; }
+    try {
+      await api.writeFile(editor.path, editor.content);
+      notify(`> SAVED ${editor.path}`, 'ok');
+      setEditor(null);
+      refresh();
+    } catch (err) { notify(`> SAVE FAILED: ${err.message}`, 'crit'); }
+  };
+
   const crumbs = path === '/' ? ['/'] : ['/', ...path.split('/').filter(Boolean)];
 
   return (
@@ -167,6 +208,8 @@ function FileManager({ onNotify }) {
         <Btn label="[GO]"      cls="cyan" onClick={goToInput} />
         <Btn label="[REFRESH]" onClick={() => refresh()} />
         <Btn label="[MKDIR]"   onClick={onMkdir} />
+        <Btn label="[UPLOAD]"  onClick={onUploadClick} />
+        <input ref={uploadRef} type="file" style={{ display: 'none' }} onChange={onUploadPick} />
       </div>
       {error && (
         <div style={{ padding: '4px 12px', color: 'var(--color-error)', fontSize: '0.72rem' }}>
@@ -207,9 +250,50 @@ function FileManager({ onNotify }) {
             &gt; {entries[selected].name}
           </span>
           <Btn label="[OPEN]"   cls="cyan"   onClick={() => navigate(entries[selected].name, entries[selected].type)} />
+          {entries[selected].type === 'file' && <Btn label="[EDIT]" cls="cyan" onClick={onEdit} />}
           <Btn label="[RENAME]" onClick={onRename} />
           <Btn label="[DELETE]" cls="danger" onClick={onDelete} />
           {entries[selected].type === 'file' && <Btn label="[DOWNLOAD]" onClick={onDownload} />}
+        </div>
+      )}
+
+      {/* Text editor overlay — for plain-text files (256K cap enforced
+          by the backend). Save writes the buffer back via PUT
+          /api/files/write; Cancel discards. */}
+      {editor && (
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 50,
+          background: 'var(--bg-overlay-2)', display: 'flex',
+          alignItems: 'center', justifyContent: 'center', padding: 20,
+        }}>
+          <div style={{
+            width: 'min(900px, 96%)', height: '90%',
+            display: 'flex', flexDirection: 'column',
+            background: 'var(--bg-glass)', border: '1px solid var(--border-green-30)',
+            borderRadius: 'var(--radius-lg)', overflow: 'hidden',
+          }}>
+            <div style={{
+              padding: '8px 12px', borderBottom: '1px solid var(--border-green-20)',
+              display: 'flex', gap: 8, alignItems: 'center',
+            }}>
+              <span style={{ color: 'var(--neon-cyan)', fontSize: '0.75rem', letterSpacing: 1, flex: 1 }}>
+                EDIT &gt; {editor.path}
+              </span>
+              <Btn label="[SAVE]"   cls="cyan"   onClick={saveEditor} />
+              <Btn label="[CANCEL]" onClick={() => setEditor(null)} />
+            </div>
+            <textarea
+              autoFocus
+              value={editor.content}
+              onChange={e => setEditor(ed => ({ ...ed, content: e.target.value }))}
+              spellCheck={false}
+              style={{
+                flex: 1, padding: 12, border: 'none', outline: 'none', resize: 'none',
+                background: 'transparent', color: 'var(--text-primary)',
+                fontFamily: 'var(--font-mono)', fontSize: '0.85rem', lineHeight: 1.5,
+              }}
+            />
+          </div>
         </div>
       )}
     </div>
@@ -704,6 +788,7 @@ function ServiceManager({ onNotify }) {
   const [svcs, setSvcs] = useState(isDemo ? INITIAL_SVCS : []);
   const [filter, setFilter] = useState('');
   const [error, setError] = useState(null);
+  const [logsModal, setLogsModal] = useState(null); // { unit, text } | null
 
   const refresh = useCallback(async () => {
     if (isDemo) { setSvcs(INITIAL_SVCS); return; }
@@ -740,21 +825,23 @@ function ServiceManager({ onNotify }) {
   };
 
   const viewLogs = async (name) => {
-    if (isDemo) { onNotify && onNotify(`> [DEMO] journalctl -u ${name}`, 'ok'); return; }
+    if (isDemo) {
+      setLogsModal({ unit: name, text: `# [DEMO] journalctl -u ${name}\n(no live logs in demo mode)\n` });
+      return;
+    }
+    setLogsModal({ unit: name, text: 'Loading...' });
     try {
-      const text = await api.serviceLogs(name, 80);
-      // Cheap modal — alert keeps scope tight; the LogViewer panel is the
-      // real home for browseable logs.
-      alert(`[${name}]\n\n${text.slice(-4000)}`);
+      const text = await api.serviceLogs(name, 200);
+      setLogsModal({ unit: name, text });
     } catch (err) {
-      onNotify && onNotify(`> LOGS FAILED: ${err.message}`, 'crit');
+      setLogsModal({ unit: name, text: `# LOGS FAILED\n${err.message}\n` });
     }
   };
 
   const filtered = svcs.filter(s => !filter || s.name.includes(filter) || (s.desc || '').toLowerCase().includes(filter.toLowerCase()));
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', position: 'relative' }}>
       <div style={{ padding: '6px 10px', borderBottom: '1px solid rgba(0,255,0,0.1)', display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
         <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)', letterSpacing: 1, flexShrink: 0 }}>systemctl</span>
         <input
@@ -788,6 +875,45 @@ function ServiceManager({ onNotify }) {
           </div>
         ))}
       </div>
+
+      {/* Logs modal — replaces the old alert() popup. Loads from
+          /api/services/:name/logs and renders monospace so journal
+          formatting survives. */}
+      {logsModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'absolute', inset: 0, zIndex: 50,
+            background: 'var(--bg-overlay-2)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+          }}
+          onClick={(e) => { if (e.target === e.currentTarget) setLogsModal(null); }}
+        >
+          <div style={{
+            width: 'min(960px, 96%)', height: '85%',
+            display: 'flex', flexDirection: 'column',
+            background: 'var(--bg-glass)', border: '1px solid var(--border-green-30)',
+            borderRadius: 'var(--radius-lg)', overflow: 'hidden',
+          }}>
+            <div style={{
+              padding: '8px 12px', borderBottom: '1px solid var(--border-green-20)',
+              display: 'flex', gap: 8, alignItems: 'center',
+            }}>
+              <span style={{ color: 'var(--neon-cyan)', fontSize: '0.75rem', letterSpacing: 1, flex: 1 }}>
+                journalctl -u {logsModal.unit} -n 200
+              </span>
+              <Btn label="[REFRESH]" cls="cyan" onClick={() => viewLogs(logsModal.unit)} />
+              <Btn label="[CLOSE]"   onClick={() => setLogsModal(null)} />
+            </div>
+            <pre style={{
+              flex: 1, margin: 0, padding: 12, overflow: 'auto',
+              fontFamily: 'var(--font-mono)', fontSize: '0.78rem', lineHeight: 1.5,
+              color: 'var(--text-primary)', whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+            }}>{logsModal.text}</pre>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

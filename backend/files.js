@@ -111,6 +111,38 @@ async function readText(p, maxBytes = 256 * 1024) {
   return { path: target, size: st.size, content: buf.toString('utf8') };
 }
 
+async function writeText(p, content) {
+  const target = safePath(p);
+  if (typeof content !== 'string') {
+    const err = new Error('content must be a string');
+    err.code = 'EBADBODY';
+    throw err;
+  }
+  await fs.writeFile(target, content, 'utf8');
+  return { ok: true, path: target, size: Buffer.byteLength(content, 'utf8') };
+}
+
+// Streaming upload — pipes a request body straight to disk so large files
+// don't get buffered in memory. Returns a Promise that resolves once the
+// write stream finishes.
+function streamUpload(dirPath, filename, req) {
+  return new Promise((resolve, reject) => {
+    const dir = safePath(dirPath);
+    // Reject filenames that try to escape the target directory.
+    if (!filename || filename.includes('/') || filename === '..' || filename === '.') {
+      return reject(Object.assign(new Error('invalid filename'), { code: 'EBADNAME' }));
+    }
+    const target = path.posix.join(dir, filename);
+    const ws = fssync.createWriteStream(target, { flags: 'wx', mode: 0o644 });
+    let bytes = 0;
+    req.on('data', (chunk) => { bytes += chunk.length; });
+    req.on('error', reject);
+    ws.on('error', reject);
+    ws.on('close', () => resolve({ ok: true, path: target, size: bytes }));
+    req.pipe(ws);
+  });
+}
+
 function streamFile(p, res) {
   const target = safePath(p);
   const st = fssync.statSync(target);
@@ -121,4 +153,4 @@ function streamFile(p, res) {
   fssync.createReadStream(target).pipe(res);
 }
 
-module.exports = { list, mkdir, rm, rename, readText, streamFile, safePath };
+module.exports = { list, mkdir, rm, rename, readText, writeText, streamUpload, streamFile, safePath };

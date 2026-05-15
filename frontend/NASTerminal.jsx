@@ -296,6 +296,7 @@ function MobileDeck({ user, host, sessions, onAddSession, onUpdateSession, onLau
     { id: 'browser',  name: 'Browser',  icon: '[WW]', desc: 'Web' },
     { id: 'apicfg',   name: 'API Cfg',  icon: '[CF]', desc: 'Keys' },
     { id: 'settings', name: 'Settings', icon: '[ST]', desc: 'Theme' },
+    { id: 'devdocs',  name: 'Dev Guide',icon: '[?]',  desc: 'Docs', url: 'Developer Guide.html' },
   ];
 
   const openApp = (app) => { setActiveApp(app); setView('app'); };

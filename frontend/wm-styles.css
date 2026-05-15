@@ -754,6 +754,9 @@ input, textarea, select { font-family: var(--font-system); }
   flex-direction: column;
   overflow: hidden;
   font-size: 0.85rem;
+  /* Anchor the inline text-editor overlay (position:absolute) so it
+     covers only this panel, not the whole window. */
+  position: relative;
 }
 .filemgr-toolbar {
   display: flex;
