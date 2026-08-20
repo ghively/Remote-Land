@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_DIR="/home/ghively/remote-land"
+# Override with DEPLOY_PROJECT_DIR to point at your own checkout location.
+PROJECT_DIR="${DEPLOY_PROJECT_DIR:-$HOME/remote-land}"
 BACKEND_DIR="$PROJECT_DIR/backend"
 SERVICE_NAME="nas-terminal"
 BACKUP_DIR="$HOME/.deploy-backup"

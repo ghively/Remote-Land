@@ -28,5 +28,7 @@ jobs:
           npm test
 
       - name: Deploy
+        env:
+          DEPLOY_PROJECT_DIR: ${{ vars.DEPLOY_PROJECT_DIR }}
         run: |
-          /home/ghively/remote-land/backend/scripts/deploy.sh
+          "${DEPLOY_PROJECT_DIR:-$HOME/remote-land}/backend/scripts/deploy.sh"

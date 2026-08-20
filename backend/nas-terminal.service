@@ -4,11 +4,14 @@ After=network.target docker.service
 
 [Service]
 Type=simple
-WorkingDirectory=/home/ghively/remote-land/backend
+# Set User to the account that owns the checkout on your box, then adjust
+# WorkingDirectory if the repo isn't cloned directly into that user's home
+# directory. %h expands to the home directory of the User below.
+User=remoteland
+WorkingDirectory=%h/remote-land/backend
 ExecStart=/usr/bin/node server.js
 Restart=on-failure
 RestartSec=5
-User=ghively
 Environment=NODE_ENV=production
 
 [Install]
