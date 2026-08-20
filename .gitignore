@@ -8,6 +8,20 @@ desktop.ini
 
 # Backend config (contains API key — never commit)
 backend/config.json
+.env
+.env.*
 
-# Backend dependencies
+# Node dependencies
+node_modules/
 backend/node_modules/
+
+# Test coverage output
+coverage/
+
+# Local editor / AI-agent tooling state (not project config)
+.claude/
+.vscode/
+
+# Note: frontend/dist/ is intentionally tracked — this project has no
+# build step for end users; the compiled bundles are the deliverable.
+# See CLAUDE.md.
