@@ -1458,7 +1458,7 @@ const NET_HOSTS = [{
 }, {
   ip: '192.168.1.70',
   mac: '11:22:33:44:55:66',
-  host: 'phone-gene',
+  host: 'phone-1',
   type: 'mobile',
   status: 'up',
   latency: '8ms'

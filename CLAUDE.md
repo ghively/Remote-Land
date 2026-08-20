@@ -38,7 +38,7 @@ node server.js                       # visit http://your-server:3001
 
 ```
 frontend/          ← browser UI (CDN React + Babel prototype)
-backend/           ← Linux server agent (Sub-project 2, not yet built)
+backend/           ← Linux server agent (Sub-project 2, complete — see backend/README.md)
 docs/
   superpowers/
     specs/         ← approved design specs
@@ -118,11 +118,11 @@ so SettingsPanel can still adjust the rotation speed at runtime.
 
 ---
 
-## Backend / AI architecture (planned)
+## Backend / AI architecture
 
-- `backend/` will contain a lightweight Linux service (Node.js or Python — decided in Sub-project 2 spec) exposing REST + WebSocket endpoints for: system stats, Docker, media APIs, and a real terminal session.
-- **AI features** (chat panel, command suggestions, log analyzer, NL→shell) call the Claude API via the backend proxy. The API key never lives in the browser.
-- See `docs/superpowers/specs/` for sub-project specs as they are written.
+- `backend/` is a Node.js (Express + ws) service exposing REST + WebSocket endpoints for: system stats, Docker, media APIs, and a real terminal session.
+- **AI features** (chat panel, command suggestions, log analyzer, NL→shell) call any OpenAI-compatible Chat Completions endpoint (OpenAI, Azure OpenAI, OpenRouter, Ollama, vLLM, etc.) via the backend proxy — see `backend/ai.js`. The API key never lives in the browser.
+- See `docs/superpowers/specs/` for sub-project specs as originally written.
 
 ---
 

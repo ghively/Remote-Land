@@ -802,7 +802,7 @@ const NET_HOSTS = [
   { ip: '192.168.1.50',  mac: 'dc:a6:32:12:34:56', host: 'raspi',     type: 'server',  status: 'up',   latency: '3ms' },
   { ip: '192.168.1.55',  mac: 'f4:6d:04:ab:cd:ef', host: 'tv-main',   type: 'media',   status: 'up',   latency: '5ms' },
   { ip: '192.168.1.60',  mac: '00:11:22:33:44:55', host: 'laptop',    type: 'client',  status: 'down', latency: '-' },
-  { ip: '192.168.1.70',  mac: '11:22:33:44:55:66', host: 'phone-gene',type: 'mobile',  status: 'up',   latency: '8ms' },
+  { ip: '192.168.1.70',  mac: '11:22:33:44:55:66', host: 'phone-1',   type: 'mobile',  status: 'up',   latency: '8ms' },
   { ip: '192.168.1.200', mac: '22:33:44:55:66:77', host: 'switch-01', type: 'network', status: 'up',   latency: '0ms' },
 ];
 
