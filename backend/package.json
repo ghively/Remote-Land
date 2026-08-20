@@ -2,6 +2,7 @@
   "name": "nas-terminal-backend",
   "version": "1.0.0",
   "main": "server.js",
+  "license": "MIT",
   "scripts": {
     "start": "node server.js",
     "test": "jest --testPathPattern=__tests__"
